@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>MailMate</title>
+    <link rel="stylesheet" type="text/css" href="css/popup.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta charset="utf-8">
+</head>
+
+<body>
+    <h1>Vos fichiers</h1>
+    <div class="custom-select">
+        <select id="language">
+            <option value="fra" selected>French</option>
+            <option value="eng">English</option>
+            <option value="ita">Italian</option>
+        </select>
+    </div>
+    <button id="fetch-attachments" disabled>Récuperer</button>
+    <div id="attachments"></div>
+    <button id="download" disabled>Traitement</button>
+</body>
+<script src="dist/index.js"></script>
+
+</html>

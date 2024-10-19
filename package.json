@@ -1,0 +1,25 @@
+{
+  "name": "mailmate-ext",
+  "version": "1.0.0",
+  "description": "Chrome extension that scans email attachments to identify and rename IDs and contracts.",
+  "main": "public/dist/index.js",
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/chrome": "^0.0.278",
+    "typescript": "^5.6.3"
+  },
+  "scripts": {
+    "build": "bun run tsc",
+    "watch": "bun run tsc --watch",
+    "start": "bun run watch"
+  },
+  "keywords": [
+    "chrome-extension",
+    "typescript",
+    "bun",
+    "email",
+    "attachment"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
+}

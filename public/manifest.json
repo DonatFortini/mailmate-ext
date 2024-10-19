@@ -1,0 +1,26 @@
+{
+    "manifest_version": 3,
+    "name": "MailMate",
+    "version": "1.0",
+    "description": "MailMate is a simple email client",
+    "action": {
+        "default_popup": "popup.html"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "<all_urls>"
+            ],
+            "js": [
+                "dist/background.js"
+            ]
+        }
+    ],
+    "permissions": [
+        "storage",
+        "activeTab",
+        "tabs",
+        "scripting",
+        "downloads"
+    ]
+}

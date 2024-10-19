@@ -1,0 +1,106 @@
+body {
+    font-family: Arial, sans-serif;
+    width: 300px;
+    padding: 10px;
+}
+
+h1 {
+    font-size: 18px;
+}
+
+button {
+    width: 100%;
+    padding: 10px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+button.inactive {
+    background-color: #cccccc;
+    cursor: not-allowed;
+}
+
+#attachments {
+    margin-top: 20px;
+}
+
+.attachment {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.attachment img {
+    width: 20px;
+    height: 20px;
+    margin-right: 10px;
+}
+
+.attachment a {
+    color: #007bff;
+    text-decoration: none;
+}
+
+.attachment a:hover {
+    text-decoration: underline;
+}
+
+
+
+
+.custom-select {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+}
+
+.custom-select select {
+    display: none; 
+}
+
+.select-selected {
+    background-color: #f1f1f1;
+    padding: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+.select-selected img ,.select-items div img {
+    height: 16px; 
+    width: 16px; 
+    margin-right: 10px;
+}
+
+.select-items {
+    position: absolute;
+    background-color: #f1f1f1;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 99;
+    display: none;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    max-height: 200px; 
+    overflow-y: auto;
+}
+
+.select-items div {
+    padding: 8px;
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+}
+
+.select-items div:hover, .same-as-selected {
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
+
