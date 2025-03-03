@@ -1,29 +1,30 @@
 import { defineConfig } from "vite";
+import tailwindcss from "@tailwindcss/vite";
 import { resolve } from "path";
 
 export default defineConfig({
+  plugins: [tailwindcss()],
+  resolve: {
+    alias: {
+      "@": resolve(__dirname, "src"),
+    },
+  },
   build: {
-    outDir: "extension/dist",
-    emptyOutDir: true,
     rollupOptions: {
       input: {
         background: resolve(__dirname, "src/background.ts"),
-        index: resolve(__dirname, "src/index.ts"),
+        content: resolve(__dirname, "src/content.ts"),
+        index: resolve(__dirname, "index.html"),
       },
       output: {
-        entryFileNames: "[name].js",
-        chunkFileNames: "chunks/[name].[hash].js",
+        entryFileNames: "assets/[name].js",
+        chunkFileNames: "assets/[name]-[hash].js",
         assetFileNames: "assets/[name].[ext]",
-        format: "es",
-        preserveModules: true,
-        preserveModulesRoot: "src",
       },
-      preserveEntrySignatures: "strict",
     },
   },
-  resolve: {
-    alias: {
-      "@": resolve(__dirname, "./src"),
-    },
+  server: {
+    port: 3000,
+    open: "index.html",
   },
 });

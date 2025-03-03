@@ -4,18 +4,19 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"vite build --watch\" \"tailwindcss -i ./src/style.css -o ./extension/output.css --watch\"",
-    "build": "tsc && vite build && tailwindcss -i ./src/style.css -o ./extension/output.css",
-    "preview": "vite preview"
+    "dev": "vite",
+    "build": " vite build",
+    "serve": "vite preview"
   },
   "devDependencies": {
-    "@types/chrome": "^0.0.256",
-    "autoprefixer": "^10.4.16",
+    "@types/chrome": "^0.0.306",
+    "autoprefixer": "^10.4.20",
     "bun-types": "latest",
-    "concurrently": "^8.2.2",
-    "postcss": "^8.4.31",
-    "tailwindcss": "^3.3.5",
-    "typescript": "^5.2.2",
-    "vite": "^4.5.0"
+    "typescript": "^5.7.3",
+    "vite": "^6.2.0"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.0.9",
+    "tailwindcss": "^4.0.9"
   }
 }
