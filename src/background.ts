@@ -368,7 +368,7 @@ async function sendAttachmentsToApi(
     `[Background] Sending ${attachmentBatch.attachments.length} attachments to API`
   );
 
-  const response = await fetch(`${API_URL}${API_PREFIX}/attachments`, {
+  const response = await fetch(`${API_URL}${API_PREFIX}/process`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
