@@ -236,32 +236,89 @@ class AttachmentPopup {
     this.contentElement.innerHTML = "";
 
     if (!batch?.attachments.length) {
-      this.contentElement.innerHTML =
-        '<p class="text-gray-500">No attachments found</p>';
+      this.contentElement.innerHTML = `
+        <div class="flex flex-col items-center justify-center h-full text-center text-gray-400">
+          <svg class="h-10 w-10 mb-2 text-[#788BFF] opacity-30" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          <p class="text-sm">Aucune pièce jointe trouvée</p>
+          <p class="text-xs mt-1">Essayez de vérifier un autre email</p>
+        </div>
+      `;
       return;
     }
 
+    const attachmentsContainer = document.createElement("div");
+    attachmentsContainer.className = "space-y-2";
+
     batch.attachments.forEach((attachment) => {
       const element = this.createAttachmentElement(attachment);
-      this.contentElement.appendChild(element);
+      attachmentsContainer.appendChild(element);
     });
+
+    const countText = document.createElement("div");
+    countText.className = "text-xs text-[#251351] opacity-70 mb-2";
+    countText.textContent = `${batch.attachments.length} pièce${
+      batch.attachments.length > 1 ? "s" : ""
+    } jointe${batch.attachments.length > 1 ? "s" : ""} trouvée${
+      batch.attachments.length > 1 ? "s" : ""
+    }`;
+
+    this.contentElement.appendChild(countText);
+    this.contentElement.appendChild(attachmentsContainer);
   }
 
   private createAttachmentElement(attachment: Attachment): HTMLElement {
     const div = document.createElement("div");
     div.className =
-      "flex items-center mb-2 p-2 hover:bg-gray-100 cursor-pointer rounded";
+      "attachment-item flex items-center p-2 border border-black rounded-md mb-2 bg-gray-50 hover:bg-gray-100 hover:shadow transition-colors";
 
     const iconSrc =
       FILE_TYPE_ICONS[attachment.type] || FILE_TYPE_ICONS[FileType.OTHER];
 
+    const fileExtension = attachment.name.split(".").pop()?.toUpperCase() || "";
+
+    const fileSize = attachment.metadata?.size
+      ? this.formatFileSize(attachment.metadata.size)
+      : "";
+
     div.innerHTML = `
-      <img src="${iconSrc}" alt="icon" class="w-5 h-5 mr-2">
-      <span class="text-blue-500">${attachment.name}</span>
+      <div class="mr-3 text-[#788BFF]">
+        <img src="${iconSrc}" alt="icon" class="w-6 h-6">
+      </div>
+      <div class="flex-1 overflow-hidden">
+        <div class="text-sm font-medium text-[#251351] truncate">${
+          attachment.name
+        }</div>
+        <div class="text-xs text-gray-500">${fileExtension}${
+      fileSize ? " • " + fileSize : ""
+    }</div>
+      </div>
+      <button class="download-btn ml-2 p-1 text-gray-400 hover:text-[#788BFF] rounded-full hover:bg-gray-200 transition-colors">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+        </svg>
+      </button>
     `;
+
+    const downloadBtn = div.querySelector(".download-btn");
+    if (downloadBtn) {
+      downloadBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.downloadAttachment(attachment);
+      });
+    }
 
     div.addEventListener("click", () => {
       this.downloadAttachment(attachment);
+    });
+
+    div.addEventListener("mouseover", () => {
+      div.style.borderColor = "lightgray";
+    });
+
+    div.addEventListener("mouseout", () => {
+      div.style.borderColor = "black";
     });
 
     return div;
@@ -321,6 +378,15 @@ class AttachmentPopup {
         }
       });
     });
+  }
+
+  private formatFileSize(bytes: number): string {
+    if (bytes === 0) return "0 B";
+
+    const sizes = ["B", "KB", "MB", "GB", "TB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+
+    return parseFloat((bytes / Math.pow(1024, i)).toFixed(1)) + " " + sizes[i];
   }
 }
 

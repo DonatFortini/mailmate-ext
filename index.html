@@ -121,48 +121,136 @@
         v1.0.0 • © 2023 MailMate
       </div>
     </div>
+
     <!-- Main Container -->
-    <div id="mainContainer">
-      <!-- User info area -->
-      <div class="flex items-center justify-between mb-2">
-        <div id="userInfo" class="text-sm text-gray-600"></div>
-        <button
-          id="logoutButton"
-          class="text-xs text-gray-500 hover:text-red-500 transition-colors"
-        >
-          Logout
-        </button>
-      </div>
+    <div id="mainContainer" class="p-4 hidden w-full h-full flex flex-col">
+      <!-- Header avec titre et info utilisateur -->
+      <div class="flex justify-between items-center mb-4">
+        <h1 class="text-xl font-semibold text-[#251351]">Vos fichiers</h1>
 
-      <!-- Header area -->
-      <div class="flex items-center justify-between mb-4">
-        <h1 class="text-xl font-semibold text-blue-600">Vos fichiers</h1>
+        <div class="flex items-center space-x-2">
+          <div class="language-selector">
+            <select
+              id="language"
+              class="appearance-none bg-white border border-gray-200 rounded-md py-1 px-2 text-xs text-[#251351] focus:outline-none focus:ring-1 focus:ring-[#788BFF] focus:border-transparent shadow-sm"
+            >
+              <option value="fra" selected>🇫🇷 FR</option>
+              <option value="eng">🇬🇧 EN</option>
+              <option value="ita">🇮🇹 IT</option>
+            </select>
+          </div>
 
-        <div class="language-selector">
-          <select
-            id="language"
-            class="appearance-none bg-white border border-gray-200 rounded-md py-1 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm"
+          <button
+            id="logoutButton"
+            class="text-xs text-[#251351] hover:text-[#470024] transition-colors"
+            title="Déconnexion"
           >
-            <option value="fra" data-icon="/icons/flag-fr.svg" selected>
-              🇫🇷 FR
-            </option>
-            <option value="eng" data-icon="/icons/flag-uk.svg">🇬🇧 EN</option>
-            <option value="ita" data-icon="/icons/flag-it.svg">🇮🇹 IT</option>
-          </select>
+            <svg
+              class="h-4 w-4"
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path
+                fill-rule="evenodd"
+                d="M3 3a1 1 0 00-1 1v12a1 1 0 001 1h12a1 1 0 001-1V4a1 1 0 00-1-1H3zm11 4a1 1 0 10-2 0v4a1 1 0 102 0V7z"
+                clip-rule="evenodd"
+              />
+              <path d="M9 7a1 1 0 10-2 0v6a1 1 0 102 0V7z" />
+            </svg>
+          </button>
         </div>
       </div>
 
-      <!-- Content area for attachments -->
+      <!-- Affichage de l'email connecté -->
+      <div
+        id="userInfo"
+        class="text-sm text-[#251351] mb-3 opacity-70 font-medium"
+      >
+        user@example.com
+      </div>
+
+      <!-- Content area for attachments - prend tout l'espace disponible -->
       <div
         id="content"
-        class="mb-4 min-h-[140px] bg-white border border-gray-200 rounded-lg shadow-sm p-3 overflow-y-auto max-h-[250px]"
-      ></div>
+        class="flex-1 min-h-[200px] bg-white border border-gray-200 rounded-lg shadow-sm p-3 overflow-y-auto mb-4"
+      >
+        <!-- État vide -->
+        <div
+          class="flex flex-col items-center justify-center h-full text-center text-gray-400"
+        >
+          <svg
+            class="h-10 w-10 mb-2 text-[#788BFF] opacity-30"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+            />
+          </svg>
+          <p class="text-sm">Aucune pièce jointe trouvée</p>
+          <p class="text-xs mt-1">
+            Cliquez sur "Récupérer" pour rechercher des pièces jointes
+          </p>
+        </div>
 
-      <!-- Buttons area -->
-      <div class="button-container space-y-2">
+        <!-- Exemple d'élément de pièce jointe (caché par défaut) -->
+        <div
+          class="attachment-item hidden flex items-center p-2 border border-gray-100 rounded-md mb-2 bg-gray-50 hover:bg-gray-100"
+        >
+          <div class="mr-3 text-[#788BFF]">
+            <svg
+              class="h-6 w-6"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+              />
+            </svg>
+          </div>
+          <div class="flex-1">
+            <div class="text-sm font-medium text-[#251351] truncate">
+              document_exemple.pdf
+            </div>
+            <div class="text-xs text-gray-500">PDF • 2.4 MB</div>
+          </div>
+          <button
+            class="ml-2 p-1 text-gray-400 hover:text-[#788BFF] rounded-full hover:bg-gray-200"
+          >
+            <svg
+              class="h-5 w-5"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+              />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Buttons area - fixé en bas -->
+      <div class="button-container space-y-2 mt-auto">
         <button
           id="fetch"
-          class="w-full py-2.5 px-4 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-md shadow-sm transition duration-200 font-medium flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed disabled:from-gray-400 disabled:to-gray-500"
+          class="w-full py-2.5 px-4 bg-[#788BFF] hover:bg-[#6777E3] text-white rounded-md shadow-sm transition duration-200 font-medium flex items-center justify-center"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -178,16 +266,16 @@
               d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
             />
           </svg>
-          Récuperer
+          Récupérer
         </button>
 
         <button
           id="download"
-          class="w-full py-2.5 px-4 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-md shadow-sm transition duration-200 font-medium items-center justify-center hidden"
+          class="w-full py-2.5 px-4 bg-[#251351] hover:bg-[#470024] text-white rounded-md shadow-sm transition duration-200 font-medium items-center justify-center hidden"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            class="h-5 w-5 mr-2"
+            class="h-5 w-5 mr-2 inline"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -201,6 +289,11 @@
           </svg>
           Traitement
         </button>
+      </div>
+
+      <!-- Status message area -->
+      <div class="mt-3 text-center">
+        <p id="statusMessage" class="text-xs text-[#251351] opacity-70"></p>
       </div>
     </div>
   </body>
