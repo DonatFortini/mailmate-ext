@@ -109,6 +109,7 @@ class LoginManager {
     } catch (error) {
       console.error("[Login] Login error:", error);
       this.errorMessage.textContent = error.message;
+      this.errorMessage.style.display = "block";
       this.loginButton.disabled = false;
       this.loginButton.textContent = "Login";
     }

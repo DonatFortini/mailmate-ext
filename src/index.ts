@@ -15,11 +15,11 @@ enum FileType {
 interface Attachment {
   id: string;
   name: string;
-  type: FileType;
+  type_: number;
   data: string;
   metadata?: {
     size?: number;
-    mimeType?: string;
+    mime_type?: string;
   };
 }
 

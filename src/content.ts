@@ -13,11 +13,11 @@ enum FileType {
 interface Attachment {
   id: string;
   name: string;
-  type: FileType;
+  type_: number;
   data: string;
   metadata?: {
     size?: number;
-    mimeType?: string;
+    mime_type?: string;
   };
 }
 
@@ -58,50 +58,117 @@ type SupportedDomain =
   (typeof SUPPORTED_DOMAINS)[keyof typeof SUPPORTED_DOMAINS];
 
 const MAIL_SELECTORS = {
-  GMAIL: ['span[class*="aZo"]', "img.CToWUd.a6T"],
-  OUTLOOK: [
-    "div[role='attachment'] img",
-    "div.allowTextSelection img:not(.InlineImage)",
-    "div.AttachmentPreview img",
-    "div.FileAttachment img",
-    "div.InlineAttachment img",
-  ],
+  GMAIL: 'span[class*="aZo"], img.CToWUd.a6T',
+  OUTLOOK: `
+    div[role='attachment'] img,
+    div.allowTextSelection img:not(.InlineImage),
+    div.AttachmentPreview img,
+    div.FileAttachment img,
+    div.InlineAttachment img
+  `,
 } as const;
+
+const FILE_TYPE_MAP = {
+  extensions: {
+    jpg: FileType.IMAGE,
+    jpeg: FileType.IMAGE,
+    png: FileType.IMAGE,
+    gif: FileType.IMAGE,
+    webp: FileType.IMAGE,
+    bmp: FileType.IMAGE,
+    svg: FileType.IMAGE,
+    pdf: FileType.PDF,
+    txt: FileType.TEXT,
+    csv: FileType.TEXT,
+    md: FileType.TEXT,
+    rtf: FileType.TEXT,
+    doc: FileType.TEXT,
+    docx: FileType.TEXT,
+    mp3: FileType.AUDIO,
+    wav: FileType.AUDIO,
+    ogg: FileType.AUDIO,
+    mp4: FileType.VIDEO,
+    webm: FileType.VIDEO,
+    mov: FileType.VIDEO,
+  },
+  mimeTypePrefixes: {
+    "image/": FileType.IMAGE,
+    "application/pdf": FileType.PDF,
+    "text/": FileType.TEXT,
+    "audio/": FileType.AUDIO,
+    "video/": FileType.VIDEO,
+  },
+};
 
 //---------------------------- UTILITY FUNCTIONS ----------------------------//
 
 class FileUtils {
-  static imageToBase64(img: HTMLImageElement): Promise<string> {
-    return new Promise((resolve, reject) => {
-      try {
-        const canvas = document.createElement("canvas");
-        canvas.width = img.naturalWidth || img.width;
-        canvas.height = img.naturalHeight || img.height;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) throw new Error("Could not get canvas context");
+  static attachmentCache = new Map();
 
-        ctx.drawImage(img, 0, 0);
-        resolve(canvas.toDataURL("image/png"));
+  static async toBase64(element: HTMLElement | File): Promise<string> {
+    const cacheKey =
+      element instanceof HTMLElement
+        ? element.getAttribute("download_url") ||
+          element.getAttribute("href") ||
+          element.src
+        : element.name;
+
+    if (cacheKey && this.attachmentCache.has(cacheKey)) {
+      return this.attachmentCache.get(cacheKey);
+    }
+
+    let dl_link =
+      element.getAttribute("download_url") || element.getAttribute("href");
+
+    if (dl_link) {
+      try {
+        const response = await fetch(dl_link);
+        const blob = await response.blob();
+        const base64 = await this.blobToBase64(blob);
+
+        if (cacheKey) {
+          this.attachmentCache.set(cacheKey, base64);
+        }
+
+        return base64;
       } catch (error) {
-        reject(error);
+        console.error("[FileUtils] Error converting to base64:", error);
+        return "";
       }
+    }
+    return "";
+  }
+
+  static blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
     });
   }
 
   static detectFileType(filename: string, mimeType?: string): FileType {
     const extension = this.getExtension(filename).toLowerCase();
-
-    if (["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"].includes(extension))
-      return FileType.IMAGE;
-    if (extension === "pdf") return FileType.PDF;
-    if (["txt", "csv", "md", "rtf", "doc", "docx"].includes(extension))
-      return FileType.TEXT;
+    if (extension && FILE_TYPE_MAP.extensions[extension] !== undefined) {
+      return FILE_TYPE_MAP.extensions[extension];
+    }
 
     if (mimeType) {
-      if (mimeType.startsWith("image/")) return FileType.IMAGE;
-      if (mimeType === "application/pdf") return FileType.PDF;
-      if (mimeType.startsWith("text/") || mimeType.includes("document"))
-        return FileType.TEXT;
+      if (FILE_TYPE_MAP.mimeTypePrefixes[mimeType]) {
+        return FILE_TYPE_MAP.mimeTypePrefixes[mimeType];
+      }
+
+      for (const [prefix, type] of Object.entries(
+        FILE_TYPE_MAP.mimeTypePrefixes
+      )) {
+        if (
+          mimeType.startsWith(prefix) ||
+          mimeType.includes(prefix.slice(0, -1))
+        ) {
+          return type;
+        }
+      }
     }
 
     return FileType.OTHER;
@@ -124,8 +191,14 @@ class FileUtils {
   }
 
   static estimateBase64Size(base64String: string): number {
+    if (!base64String) return 0;
+
     const base64Data = base64String.split(",")[1] || base64String;
     return Math.floor(base64Data.length * 0.75);
+  }
+
+  static clearCache(): void {
+    this.attachmentCache.clear();
   }
 }
 
@@ -133,7 +206,8 @@ class FileUtils {
 
 class AttachmentFetcher {
   private domain: SupportedDomain;
-  private selectors: string[];
+  private selector: string;
+  private processedUrls = new Set<string>();
 
   constructor(domain: string) {
     if (!Object.values(SUPPORTED_DOMAINS).includes(domain as SupportedDomain)) {
@@ -141,16 +215,10 @@ class AttachmentFetcher {
     }
 
     this.domain = domain as SupportedDomain;
-    switch (this.domain) {
-      case SUPPORTED_DOMAINS.GMAIL:
-        this.selectors = MAIL_SELECTORS.GMAIL;
-        break;
-      case SUPPORTED_DOMAINS.OUTLOOK:
-        this.selectors = MAIL_SELECTORS.OUTLOOK;
-        break;
-      default:
-        this.selectors = [];
-    }
+    this.selector =
+      MAIL_SELECTORS[
+        this.domain === SUPPORTED_DOMAINS.GMAIL ? "GMAIL" : "OUTLOOK"
+      ];
   }
 
   getSourceUrlAndName(element: HTMLElement): [string, string] {
@@ -162,7 +230,9 @@ class AttachmentFetcher {
       name = element.alt || element.title || "image";
     } else {
       url = element.getAttribute("download_url") || "";
-      name = url?.split("/")[1].split(":")[1] || "";
+      const urlParts = url?.split("/");
+      name =
+        urlParts && urlParts.length > 1 ? urlParts[1].split(":")[1] || "" : "";
     }
 
     return [url, name];
@@ -171,50 +241,47 @@ class AttachmentFetcher {
   async fetchAttachments(language: string): Promise<AttachmentBatch> {
     try {
       const attachments: Attachment[] = [];
-      const elements = this.selectors.flatMap((selector) =>
-        Array.from(document.querySelectorAll(selector))
-      );
+
+      const elements = Array.from(document.querySelectorAll(this.selector));
       console.log(`[AttachmentFetcher] Found ${elements.length} elements`);
-      console.log("[AttachmentFetcher] elements:", elements);
 
-      for (const element of elements) {
+      const attachmentPromises = elements.map(async (element) => {
         try {
-          const [url, name] = this.getSourceUrlAndName(element);
-          if (!url) {
-            console.log("[AttachmentFetcher] Skipping element with no URL");
-            continue;
+          const [url, name] = this.getSourceUrlAndName(element as HTMLElement);
+          if (!url || this.processedUrls.has(url)) {
+            return null;
           }
 
-          console.log("[AttachmentFetcher] Processing attachment:", name);
+          this.processedUrls.add(url);
 
-          let data = "";
-          if (element instanceof HTMLImageElement) {
-            data = await FileUtils.imageToBase64(element);
-          }
+          const data = await FileUtils.toBase64(element as HTMLElement);
+          if (!data) return null;
 
-          const mimeType = element.getAttribute("type") || "";
-          const type = FileUtils.detectFileType(name, mimeType);
+          const mime_type = element.getAttribute("type") || "";
+          const type_ = FileUtils.detectFileType(name, mime_type);
 
           const id = FileUtils.generateId();
-          const attachment: Attachment = {
+          return {
             id,
             name: FileUtils.sanitizeFilename(name),
-            type,
+            type_,
             data,
             metadata: {
               size: FileUtils.estimateBase64Size(data),
-              mimeType,
+              mime_type,
             },
           };
-
-          attachments.push(attachment);
         } catch (error) {
           console.error(
             "[AttachmentFetcher] Error processing attachment:",
             error
           );
+          return null;
         }
-      }
+      });
+
+      const results = await Promise.all(attachmentPromises);
+      attachments.push(...(results.filter(Boolean) as Attachment[]));
 
       return { attachments, lang: language };
     } catch (error) {
@@ -222,16 +289,35 @@ class AttachmentFetcher {
       return { attachments: [], lang: language };
     }
   }
+
+  clearProcessedUrls(): void {
+    this.processedUrls.clear();
+  }
 }
 
 //---------------------------- MESSAGE HANDLING ----------------------------//
+
+const debounce = (fn: Function, ms = 300) => {
+  let timeoutId: ReturnType<typeof setTimeout>;
+  return function (...args: any[]) {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => fn.apply(this, args), ms);
+  };
+};
+
+const fetcherInstances = new Map<string, AttachmentFetcher>();
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   console.log("[Content] Received message:", message);
 
   if (message.action === MessageAction.GET_ATTACHMENTS) {
     console.log("[Content] Processing GET_ATTACHMENTS request");
-    handleGetAttachments(message, sendResponse);
+
+    const debouncedHandler = debounce(() => {
+      handleGetAttachments(message, sendResponse);
+    }, 100);
+
+    debouncedHandler();
     return true;
   }
 
@@ -249,14 +335,15 @@ async function handleGetAttachments(
       throw new Error("Domain is undefined");
     }
 
-    const fetcher = new AttachmentFetcher(message.domain);
-    const batch = await fetcher.fetchAttachments(message.language);
+    if (!fetcherInstances.has(message.domain)) {
+      fetcherInstances.set(
+        message.domain,
+        new AttachmentFetcher(message.domain)
+      );
+    }
 
-    console.log(`[Content] Found ${batch.attachments.length} attachments`);
-    console.log(
-      "[Content] Attachment types:",
-      batch.attachments.map((a) => FileType[a.type])
-    );
+    const fetcher = fetcherInstances.get(message.domain)!;
+    const batch = await fetcher.fetchAttachments(message.lang);
 
     sendResponse({ success: true, data: batch });
   } catch (error) {
@@ -268,6 +355,12 @@ async function handleGetAttachments(
     });
   }
 }
+
+window.addEventListener("beforeunload", () => {
+  FileUtils.clearCache();
+  fetcherInstances.forEach((fetcher) => fetcher.clearProcessedUrls());
+  fetcherInstances.clear();
+});
 
 //---------------------------- INITIALIZATION ----------------------------//
 

@@ -21,11 +21,11 @@ interface Message {
 interface Attachment {
   id: string;
   name: string;
-  type: number;
+  type_: number;
   data: string;
   metadata?: {
     size?: number;
-    mimeType?: string;
+    mime_type?: string;
   };
 }
 
@@ -66,8 +66,8 @@ interface TokenData {
 
 //---------------------------- CONFIGURATION ----------------------------//
 
-const API_URL = process.env.API_URL;
-const API_PREFIX = "/api/v1";
+const API_URL = import.meta.env.VITE_API_URL;
+const API_PREFIX = import.meta.env.VITE_API_PREFIX;
 const MESSAGE_TIMEOUT = 30000;
 const TOKEN_REFRESH_BUFFER = 5 * 60 * 1000;
 let refreshTimerId: number | null = null;
@@ -138,6 +138,7 @@ function checkAuthStatus(): Promise<boolean> {
 
 async function validateToken(token: string): Promise<boolean> {
   try {
+    console.log("[Background] Validating token ", API_URL, API_PREFIX);
     const response = await fetch(`${API_URL}${API_PREFIX}/auth/validate`, {
       method: "GET",
       headers: {
@@ -303,7 +304,6 @@ function handleFetchAttachments(
           action: MessageAction.GET_ATTACHMENTS,
           domain: message.domain,
           lang: message.lang,
-          token: result.jwt,
         },
         handleContentResponse
       );
@@ -368,22 +368,45 @@ async function sendAttachmentsToApi(
     `[Background] Sending ${attachmentBatch.attachments.length} attachments to API`
   );
 
-  const response = await fetch(`${API_URL}${API_PREFIX}/process`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(attachmentBatch),
-  });
+  try {
+    const requestBody = JSON.stringify(attachmentBatch);
 
-  if (!response.ok) {
-    const error = new Error(`API error: ${response.status}`);
-    error.status = response.status;
+    const response = await fetch(`${API_URL}${API_PREFIX}/process`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: requestBody,
+    });
+
+    if (!response.ok) {
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        const errorData = await response.json();
+        const errorMessage =
+          errorData.message ||
+          errorData.error ||
+          `API error: ${response.status}`;
+
+        const error: any = new Error(errorMessage);
+        error.status = response.status;
+        throw error;
+      } else {
+        const errorText = await response.text();
+        const error: any = new Error(
+          errorText || `API error: ${response.status}`
+        );
+        error.status = response.status;
+        throw error;
+      }
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("[Background] API request failed:", error);
     throw error;
   }
-
-  return await response.json();
 }
 
 function handleLogin(
