@@ -1,6 +1,6 @@
 // @ts-nocheck
 //---------------------------- TYPE DEFINITIONS ----------------------------//
-
+// TODO : add fallback and retry for fetch
 enum FileType {
   IMAGE = 0,
   PDF = 1,

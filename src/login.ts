@@ -14,6 +14,11 @@ interface AuthResult {
   error?: string;
 }
 
+const SUPPORTED_DOMAINS = {
+  GMAIL: "mail.google.com",
+  OUTLOOK: "outlook.live.com",
+} as const;
+
 class LoginManager {
   private loginForm: HTMLFormElement;
   private emailInput: HTMLInputElement;
@@ -22,7 +27,9 @@ class LoginManager {
   private errorMessage: HTMLElement;
   private loginContainer: HTMLElement;
   private mainContainer: HTMLElement;
+  private unauthorizedContainer: HTMLElement;
   private userInfo: HTMLElement;
+  private currentDomain: string | null = null;
 
   constructor() {
     // Get elements
@@ -41,6 +48,9 @@ class LoginManager {
     this.mainContainer = document.getElementById(
       "mainContainer"
     ) as HTMLElement;
+    this.unauthorizedContainer = document.getElementById(
+      "unauthorizedContainer"
+    ) as HTMLElement;
     this.userInfo = document.getElementById("userInfo") as HTMLElement;
 
     this.loginForm.addEventListener("submit", this.handleLogin.bind(this));
@@ -50,8 +60,25 @@ class LoginManager {
 
   async initialize(): Promise<boolean> {
     try {
-      console.log("[Login] Checking auth status...");
+      console.log("[Login] Checking domain...");
+      const currentTab = await this.getCurrentTab();
+      if (!currentTab?.url) {
+        console.log("[Login] No valid tab URL found");
+        this.showUnauthorizedDomain();
+        return false;
+      }
 
+      const domain = this.extractDomain(currentTab.url);
+      this.currentDomain = domain;
+
+      // Check if domain is supported
+      if (!this.isDomainSupported(domain)) {
+        console.log(`[Login] Domain ${domain} not supported`);
+        this.showUnauthorizedDomain();
+        return false;
+      }
+
+      console.log("[Login] Domain supported, checking auth status...");
       const status = await this.checkAuthStatus();
 
       if (status.success) {
@@ -66,6 +93,19 @@ class LoginManager {
       this.showLoginForm();
       return false;
     }
+  }
+
+  private async getCurrentTab(): Promise<chrome.tabs.Tab> {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    return tabs[0];
+  }
+
+  private extractDomain(url: string): string {
+    return new URL(url).hostname;
+  }
+
+  private isDomainSupported(domain: string): boolean {
+    return Object.values(SUPPORTED_DOMAINS).includes(domain as any);
   }
 
   private async checkAuthStatus(): Promise<AuthResult> {
@@ -137,20 +177,29 @@ class LoginManager {
     });
   }
 
+  private showUnauthorizedDomain(): void {
+    console.log("[Login] Showing unauthorized domain screen");
+    this.unauthorizedContainer.style.display = "flex";
+    this.loginContainer.style.display = "none";
+    this.mainContainer.style.display = "none";
+  }
+
   private showLoginForm(): void {
     console.log("[Login] Showing login form");
-    this.loginContainer.style.display = "block";
+    this.unauthorizedContainer.style.display = "none";
+    this.loginContainer.style.display = "flex";
     this.mainContainer.style.display = "none";
   }
 
   private showLoggedInState(user: any): void {
     console.log("[Login] Showing logged in state");
+    this.unauthorizedContainer.style.display = "none";
     this.loginContainer.style.display = "none";
-    this.mainContainer.style.display = "block";
+    this.mainContainer.style.display = "flex";
 
     if (user && this.userInfo) {
       const displayName = user.displayName || user.email || "User";
-      this.userInfo.textContent = `Logged in as ${displayName}`;
+      this.userInfo.textContent = `${displayName}`;
     }
   }
 }
