@@ -1,5 +1,3 @@
-// src/popup/App.tsx
-
 import { useAuth } from './hooks/useAuth';
 import { useAttachments } from './hooks/useAttachments';
 import { useCurrentTab } from './hooks/useCurrentTab';
@@ -22,23 +20,19 @@ export function App() {
     } = useAttachments();
     const { tabInfo, loading: tabLoading } = useCurrentTab();
 
-    // Handle login
     const handleLogin = async (email: string, password: string) => {
         return await login(email, password);
     };
 
-    // Handle logout
     const handleLogout = async () => {
         await logout();
     };
 
-    // Handle fetch attachments
     const handleFetchAttachments = async () => {
         if (!tabInfo) return;
         await fetchAttachments(tabInfo.id, tabInfo.domain);
     };
 
-    // Handle process attachments
     const handleProcessAttachments = async () => {
         if (attachments.length === 0) return;
         const success = await processAttachments(attachments);
@@ -47,7 +41,6 @@ export function App() {
         }
     };
 
-    // Handle download single attachment
     const handleDownloadAttachment = async (attachment: Attachment) => {
         try {
             await FileUtils.downloadBlob(attachment.blob, attachment.name);
@@ -56,7 +49,6 @@ export function App() {
         }
     };
 
-    // Loading state
     if (authLoading || tabLoading) {
         return (
             <div className="h-[450px] w-full flex items-center justify-center bg-linear-to-br from-[#788BFF] to-[#251351]">
@@ -84,17 +76,14 @@ export function App() {
         );
     }
 
-    // Show unauthorized domain screen
     if (tabInfo && !tabInfo.isSupported) {
         return <UnauthorizedDomain />;
     }
 
-    // Show login form
     if (!isAuthenticated) {
         return <LoginForm onLogin={handleLogin} loading={authLoading} error={authError} />;
     }
 
-    // Main app UI
     return (
         <div className="h-[450px] w-full flex flex-col bg-linear-to-br from-[#788BFF] to-[#251351] p-4">
             {/* Header */}

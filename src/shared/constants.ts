@@ -1,5 +1,3 @@
-// src/shared/constants.ts
-
 import { FileType } from './types';
 
 // ======================== SUPPORTED DOMAINS ========================

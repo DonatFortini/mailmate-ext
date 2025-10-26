@@ -1,6 +1,3 @@
-// src/shared/types.ts
-
-// ======================== FILE TYPES ========================
 export const FileType = {
     IMAGE: 0,
     PDF: 1,
@@ -12,11 +9,18 @@ export const FileType = {
 
 export type FileType = typeof FileType[keyof typeof FileType];
 
-// ======================== ATTACHMENT TYPES ========================
 export interface AttachmentMetadata {
     size?: number;
     mimeType?: string;
     sourceUrl?: string;
+}
+
+export interface TransferableAttachment {
+    id: string;
+    name: string;
+    type: FileType;
+    base64Data: string;
+    metadata: AttachmentMetadata;
 }
 
 export interface Attachment {
@@ -27,7 +31,6 @@ export interface Attachment {
     metadata: AttachmentMetadata;
 }
 
-// ======================== AUTH TYPES ========================
 export interface User {
     id: string;
     email: string;
@@ -50,7 +53,6 @@ export interface AuthResult {
     error?: string;
 }
 
-// ======================== MESSAGE TYPES ========================
 export type MessageAction =
     | 'FETCH_ATTACHMENTS'
     | 'GET_ATTACHMENTS'
@@ -87,10 +89,9 @@ export type Message =
     | ProcessAttachmentsMessage
     | BaseMessage;
 
-// ======================== RESPONSE TYPES ========================
 export interface FetchResult {
     success: boolean;
-    attachments?: Attachment[];
+    attachments?: TransferableAttachment[];
     error?: string;
 }
 

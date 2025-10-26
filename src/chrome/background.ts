@@ -1,5 +1,4 @@
 import type {
-
     Message,
     AuthResult,
     FetchResult,
@@ -110,9 +109,6 @@ async function refreshToken(): Promise<boolean> {
         });
     });
 }
-
-// src/background.ts - PARTIE 2/2
-// (Combiner avec la partie 1)
 
 // ======================== MESSAGE HANDLING ========================
 chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) => {
@@ -250,7 +246,7 @@ async function sendAttachmentsToApi(attachments: Attachment[], token: string): P
             }));
         });
 
-        const response = await fetch(`${API_URL}${API_PREFIX}/process`, {
+        const response = await fetch(`${API_URL}${API_PREFIX}/services`, {
             method: 'POST',
             headers: {
                 Authorization: `Bearer ${token}`,
@@ -280,9 +276,6 @@ async function sendAttachmentsToApi(attachments: Attachment[], token: string): P
         throw error;
     }
 }
-
-// src/background-auth.ts
-// Handlers d'authentification pour background.ts
 
 function handleLogin(message: any, sendResponse: (response: AuthResult) => void): void {
     console.log('[Background] Processing login request');

@@ -1,8 +1,7 @@
-import type { Attachment, FetchResult, MessageAction } from '../shared/types';
+import type { FetchResult, MessageAction, TransferableAttachment } from '../shared/types';
 import { FileUtils, getSelectorForDomain, debounce } from '../shared/utils';
 import { SUPPORTED_DOMAINS, type SupportedDomain } from '../shared/constants';
 
-// ======================== ATTACHMENT FETCHER ========================
 class AttachmentFetcher {
     private domain: SupportedDomain;
     private selector: string;
@@ -41,9 +40,9 @@ class AttachmentFetcher {
         return response.blob();
     }
 
-    async fetchAttachments(): Promise<Attachment[]> {
+    async fetchAttachments(): Promise<TransferableAttachment[]> {
         try {
-            const attachments: Attachment[] = [];
+            const attachments: TransferableAttachment[] = [];
             const elements = Array.from(document.querySelectorAll(this.selector));
 
             console.log(`[Content] Found ${elements.length} potential attachment elements`);
@@ -58,26 +57,26 @@ class AttachmentFetcher {
 
                     this.processedUrls.add(url);
 
-                    // Fetch as Blob instead of base64
                     const blob = await this.fetchAsBlob(url);
-
                     if (!blob) return null;
 
                     const mimeType = blob.type || element.getAttribute('type') || '';
                     const type = FileUtils.detectFileType(name, mimeType);
                     const id = FileUtils.generateId();
 
+                    const base64Data = await FileUtils.blobToBase64(blob);
+
                     return {
                         id,
                         name: FileUtils.sanitizeFilename(name),
                         type,
-                        blob,
+                        base64Data,
                         metadata: {
                             size: blob.size,
                             mimeType,
                             sourceUrl: url,
                         },
-                    } satisfies Attachment;
+                    } satisfies TransferableAttachment;
                 } catch (error) {
                     console.error('[Content] Error processing attachment:', error);
                     return null;
@@ -85,7 +84,7 @@ class AttachmentFetcher {
             });
 
             const results = await Promise.all(attachmentPromises);
-            attachments.push(...(results.filter(Boolean) as Attachment[]));
+            attachments.push(...(results.filter(Boolean) as TransferableAttachment[]));
 
             console.log(`[Content] Successfully processed ${attachments.length} attachments`);
             return attachments;
@@ -100,7 +99,6 @@ class AttachmentFetcher {
     }
 }
 
-// ======================== MESSAGE HANDLING ========================
 const fetcherInstances = new Map<string, AttachmentFetcher>();
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -148,7 +146,6 @@ async function handleGetAttachments(
     }
 }
 
-// ======================== CLEANUP ========================
 window.addEventListener('beforeunload', () => {
     fetcherInstances.forEach((fetcher) => fetcher.clearProcessedUrls());
     fetcherInstances.clear();

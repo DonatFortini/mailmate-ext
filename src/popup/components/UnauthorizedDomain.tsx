@@ -1,5 +1,3 @@
-// src/popup/components/UnauthorizedDomain.tsx
-
 import { SUPPORTED_DOMAINS } from '../../shared/constants';
 
 export function UnauthorizedDomain() {
@@ -30,11 +28,11 @@ export function UnauthorizedDomain() {
 
             {/* Supported Services List */}
             <div className="mt-4 bg-white bg-opacity-10 rounded-lg p-4 border border-white border-opacity-20">
-                <h2 className="text-white font-medium mb-2">Services supportés :</h2>
-                <ul className="text-white text-sm space-y-2">
+                <h2 className="text-gray-900 font-medium mb-2">Services supportés :</h2>
+                <ul className="text-gray-800 text-sm space-y-2">
                     <li className="flex items-center">
                         <svg
-                            className="h-5 w-5 mr-2 text-white"
+                            className="h-5 w-5 mr-2 text-gray-800"
                             fill="none"
                             viewBox="0 0 24 24"
                             stroke="currentColor"
@@ -50,7 +48,7 @@ export function UnauthorizedDomain() {
                     </li>
                     <li className="flex items-center">
                         <svg
-                            className="h-5 w-5 mr-2 text-white"
+                            className="h-5 w-5 mr-2 text-gray-800"
                             fill="none"
                             viewBox="0 0 24 24"
                             stroke="currentColor"

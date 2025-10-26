@@ -1,8 +1,8 @@
 {
     "manifest_version": 3,
-    "name": "MailMate (React)",
+    "name": "MailMate",
     "version": "1.0.0",
-    "description": "Login + Accueil pour récupérer et envoyer des pièces jointes.",
+    "description": "Votre assistant intelligent pour la gestion des emails.",
     "permissions": [
         "storage",
         "tabs",
@@ -17,7 +17,7 @@
         "default_title": "MailMate"
     },
     "background": {
-        "service_worker": "assets/background.js",
+        "service_worker": "src/chrome/background.ts",
         "type": "module"
     },
     "content_scripts": [
@@ -27,7 +27,7 @@
                 "*://outlook.live.com/*"
             ],
             "js": [
-                "assets/content.js"
+                "src/chrome/content.ts"
             ],
             "run_at": "document_idle"
         }
@@ -35,7 +35,7 @@
     "web_accessible_resources": [
         {
             "resources": [
-                "assets/*"
+                "icons/*"
             ],
             "matches": [
                 "<all_urls>"

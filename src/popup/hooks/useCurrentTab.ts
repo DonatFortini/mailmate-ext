@@ -1,5 +1,3 @@
-// src/popup/hooks/useCurrentTab.ts
-
 import { useState, useEffect } from 'react';
 import { extractDomain, isDomainSupported } from '../../shared/utils';
 

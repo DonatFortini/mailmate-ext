@@ -1,5 +1,3 @@
-// src/popup/components/EmptyState.tsx
-
 export function EmptyState() {
     return (
         <div className="flex flex-col items-center justify-center h-full text-center text-gray-100">
