@@ -60,12 +60,12 @@ export const FILE_TYPE_MAP = {
 
 // ======================== FILE TYPE ICONS ========================
 export const FILE_TYPE_ICONS: Record<FileType, string> = {
-    [FileType.IMAGE]: '/icons/img_icon.svg',
-    [FileType.PDF]: '/icons/pdf_icon.svg',
-    [FileType.TEXT]: '/icons/txt_icon.svg',
-    [FileType.AUDIO]: '/icons/audio_icon.svg',
-    [FileType.VIDEO]: '/icons/video_icon.svg',
-    [FileType.OTHER]: '/icons/attach.svg',
+    [FileType.IMAGE]: '/assets/img_icon.svg',
+    [FileType.PDF]: '/assets/pdf_icon.svg',
+    [FileType.TEXT]: '/assets/txt_icon.svg',
+    [FileType.AUDIO]: '/assets/audio_icon.svg',
+    [FileType.VIDEO]: '/assets/video_icon.svg',
+    [FileType.OTHER]: '/assets/attach.svg',
 };
 
 // ======================== TIMING CONSTANTS ========================
