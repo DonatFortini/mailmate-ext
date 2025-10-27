@@ -3,7 +3,7 @@ import { FileType } from './types';
 // ======================== SUPPORTED DOMAINS ========================
 export const SUPPORTED_DOMAINS = {
     GMAIL: 'mail.google.com',
-    OUTLOOK: 'outlook.live.com',
+    OUTLOOK: 'outlook',
 } as const;
 
 export type SupportedDomain = (typeof SUPPORTED_DOMAINS)[keyof typeof SUPPORTED_DOMAINS];

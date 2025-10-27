@@ -68,7 +68,13 @@ export function extractDomain(url: string): string {
 }
 
 export function isDomainSupported(domain: string): boolean {
-    return Object.values(SUPPORTED_DOMAINS).includes(domain as SupportedDomain);
+    if (!domain) return false;
+    const hostname = domain.toLowerCase();
+
+    return Object.values(SUPPORTED_DOMAINS).some(supported => {
+        const v = supported.toLowerCase();
+        return hostname === v || hostname.startsWith(v + '.') || hostname.endsWith('.' + v);
+    });
 }
 
 export function getSelectorForDomain(domain: SupportedDomain): string {
