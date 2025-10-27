@@ -40,6 +40,18 @@ class AttachmentFetcher {
         return response.blob();
     }
 
+    private async blobToBase64(blob: Blob): Promise<string> {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                const result = reader.result as string;
+                resolve(result);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+    }
+
     async fetchAttachments(): Promise<Attachment[]> {
         try {
             const attachments: Attachment[] = [];
@@ -64,7 +76,7 @@ class AttachmentFetcher {
                     const type = FileUtils.detectFileType(name, mimeType);
                     const id = FileUtils.generateId();
 
-                    const base64Data = await FileUtils.blobToBase64(blob);
+                    const base64Data = await this.blobToBase64(blob);
 
                     return {
                         id,

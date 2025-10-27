@@ -44,59 +44,18 @@ export class FileUtils {
         return parseFloat((bytes / Math.pow(1024, i)).toFixed(1)) + ' ' + sizes[i];
     }
 
-    static async blobToBase64(blob: Blob): Promise<string> {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                const result = reader.result as string;
-                resolve(result);
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-        });
-    }
-
-    static base64ToBlob(base64: string, mimeType?: string): Blob {
-        try {
-            let base64Data = base64;
-            let contentType = mimeType;
-
-            if (base64.includes(';base64,')) {
-                const parts = base64.split(';base64,');
-                contentType = contentType || parts[0].split(':')[1];
-                base64Data = parts[1];
-            }
-
-            const raw = window.atob(base64Data);
-            const rawLength = raw.length;
-            const uint8Array = new Uint8Array(rawLength);
-
-            for (let i = 0; i < rawLength; i++) {
-                uint8Array[i] = raw.charCodeAt(i);
-            }
-
-            return new Blob([uint8Array], { type: contentType || 'application/octet-stream' });
-        } catch (error) {
-            console.error('[FileUtils] Error converting base64 to blob:', error);
-            throw new Error('Failed to convert base64 to Blob');
-        }
-    }
-
-    static async downloadBase64(base64Data: string, filename: string, mimeType?: string): Promise<void> {
+    static async downloadBase64(base64Data: string, filename: string): Promise<void> {
         if (!base64Data) {
             throw new Error('Invalid base64 data provided for download');
         }
 
-        const blob = this.base64ToBlob(base64Data, mimeType);
-        const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url;
+        a.href = base64Data;
         a.download = filename;
         a.style.display = 'none';
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        URL.revokeObjectURL(url);
     }
 }
 

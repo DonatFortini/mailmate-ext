@@ -5,9 +5,11 @@ import type {
     ProcessResult,
     AuthTokens,
     Attachment,
+    ProcessAttachmentsMessage,
+    FetchAttachmentsMessage,
+    LoginMessage,
 } from '../shared/types';
 import { MESSAGE_TIMEOUT, TOKEN_REFRESH_BUFFER } from '../shared/constants';
-import { FileUtils } from '../shared/utils';
 
 // ======================== CONFIGURATION ========================
 const API_URL = import.meta.env.VITE_API_URL || '';
@@ -117,15 +119,15 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
 
     switch (message.action) {
         case 'FETCH_ATTACHMENTS':
-            handleFetchAttachments(message, sendResponse);
+            handleFetchAttachments(message as FetchAttachmentsMessage, sendResponse);
             return true;
 
         case 'PROCESS_ATTACHMENTS':
-            handleProcessAttachments(message, sendResponse);
+            handleProcessAttachments(message as ProcessAttachmentsMessage, sendResponse);
             return true;
 
         case 'LOGIN':
-            handleLogin(message, sendResponse);
+            handleLogin(message as LoginMessage, sendResponse);
             return true;
 
         case 'LOGOUT':
@@ -147,7 +149,7 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
 });
 
 // ======================== HANDLERS ========================
-function handleFetchAttachments(message: any, sendResponse: (response: FetchResult) => void): void {
+function handleFetchAttachments(message: FetchAttachmentsMessage, sendResponse: (response: FetchResult) => void): void {
     console.log(`[Background] Relaying fetch request to tab ${message.tabId}`);
 
     checkAuthStatus().then((isAuthenticated) => {
@@ -193,7 +195,7 @@ function handleFetchAttachments(message: any, sendResponse: (response: FetchResu
     });
 }
 
-function handleProcessAttachments(message: any, sendResponse: (response: ProcessResult) => void): void {
+function handleProcessAttachments(message: ProcessAttachmentsMessage, sendResponse: (response: ProcessResult) => void): void {
     console.log(`[Background] Processing ${message.attachments?.length || 0} attachments`);
 
     chrome.storage.local.get(['jwt'], (result) => {
@@ -230,32 +232,29 @@ async function sendAttachmentsToApi(attachments: Attachment[], token: string): P
         throw new Error('API URL not configured');
     }
 
-    console.log(`[Background] Sending ${attachments.length} attachments to API`);
+    console.log(`[Background] Sending ${attachments.length} attachments to API as base64`);
 
     try {
-        const formData = new FormData();
-
-        attachments.forEach((attachment, index) => {
-            // Convert base64 to Blob for API upload
-            const blob = FileUtils.base64ToBlob(attachment.base64Data, attachment.metadata.mimeType);
-
-            const file = new File([blob], attachment.name, {
-                type: attachment.metadata.mimeType || 'application/octet-stream',
-            });
-            formData.append(`files`, file);
-            formData.append(`metadata[${index}]`, JSON.stringify({
-                id: attachment.id,
-                type: attachment.type,
-                size: attachment.metadata.size,
-            }));
-        });
+        const payload = {
+            attachments: attachments.map(att => ({
+                id: att.id,
+                name: att.name,
+                type: att.type,
+                base64Data: att.base64Data,
+                metadata: {
+                    size: att.metadata.size,
+                    mimeType: att.metadata.mimeType,
+                },
+            })),
+        };
 
         const response = await fetch(`${API_URL}${API_PREFIX}/services`, {
             method: 'POST',
             headers: {
+                'Content-Type': 'application/json',
                 Authorization: `Bearer ${token}`,
             },
-            body: formData,
+            body: JSON.stringify(payload),
         });
 
         if (!response.ok) {
@@ -281,7 +280,7 @@ async function sendAttachmentsToApi(attachments: Attachment[], token: string): P
     }
 }
 
-function handleLogin(message: any, sendResponse: (response: AuthResult) => void): void {
+function handleLogin(message: LoginMessage, sendResponse: (response: AuthResult) => void): void {
     console.log('[Background] Processing login request');
 
     fetch(`${API_URL}${API_PREFIX}/auth/login`, {
