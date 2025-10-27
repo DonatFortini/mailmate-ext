@@ -1,4 +1,4 @@
-import type { FetchResult, MessageAction, TransferableAttachment } from '../shared/types';
+import type { FetchResult, MessageAction, Attachment } from '../shared/types';
 import { FileUtils, getSelectorForDomain, debounce } from '../shared/utils';
 import { SUPPORTED_DOMAINS, type SupportedDomain } from '../shared/constants';
 
@@ -40,9 +40,9 @@ class AttachmentFetcher {
         return response.blob();
     }
 
-    async fetchAttachments(): Promise<TransferableAttachment[]> {
+    async fetchAttachments(): Promise<Attachment[]> {
         try {
-            const attachments: TransferableAttachment[] = [];
+            const attachments: Attachment[] = [];
             const elements = Array.from(document.querySelectorAll(this.selector));
 
             console.log(`[Content] Found ${elements.length} potential attachment elements`);
@@ -76,7 +76,7 @@ class AttachmentFetcher {
                             mimeType,
                             sourceUrl: url,
                         },
-                    } satisfies TransferableAttachment;
+                    } satisfies Attachment;
                 } catch (error) {
                     console.error('[Content] Error processing attachment:', error);
                     return null;
@@ -84,7 +84,7 @@ class AttachmentFetcher {
             });
 
             const results = await Promise.all(attachmentPromises);
-            attachments.push(...(results.filter(Boolean) as TransferableAttachment[]));
+            attachments.push(...(results.filter(Boolean) as Attachment[]));
 
             console.log(`[Content] Successfully processed ${attachments.length} attachments`);
             return attachments;

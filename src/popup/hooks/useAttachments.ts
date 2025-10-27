@@ -1,6 +1,5 @@
 import { useState, useCallback } from 'react';
 import type { Attachment, FetchResult, ProcessResult } from '../../shared/types';
-import { FileUtils } from '../../shared/utils';
 
 export function useAttachments() {
     const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -35,12 +34,8 @@ export function useAttachments() {
                 });
 
                 if (result.success && result.attachments) {
-                    const convertedAttachments = result.attachments.map((transferable) =>
-                        FileUtils.transferableToAttachment(transferable)
-                    );
-
-                    setAttachments(convertedAttachments);
-                    console.log(`[useAttachments] Fetched and converted ${convertedAttachments.length} attachments`);
+                    setAttachments(result.attachments);
+                    console.log(`[useAttachments] Fetched ${result.attachments.length} attachments`);
                     return true;
                 } else {
                     setError(result.error || 'Failed to fetch attachments');

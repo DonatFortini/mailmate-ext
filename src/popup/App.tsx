@@ -43,7 +43,11 @@ export function App() {
 
     const handleDownloadAttachment = async (attachment: Attachment) => {
         try {
-            await FileUtils.downloadBlob(attachment.blob, attachment.name);
+            await FileUtils.downloadBase64(
+                attachment.base64Data,
+                attachment.name,
+                attachment.metadata.mimeType
+            );
         } catch (error) {
             console.error('Error downloading attachment:', error);
         }

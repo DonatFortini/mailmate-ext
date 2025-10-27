@@ -1,4 +1,4 @@
-import { FileType, type Attachment, type TransferableAttachment } from './types';
+import { FileType } from './types';
 import { FILE_TYPE_MAP, MAIL_SELECTORS, SUPPORTED_DOMAINS, type SupportedDomain } from './constants';
 
 export class FileUtils {
@@ -82,43 +82,12 @@ export class FileUtils {
         }
     }
 
-    static transferableToAttachment(transferable: TransferableAttachment): Attachment {
-        const blob = this.base64ToBlob(
-            transferable.base64Data,
-            transferable.metadata.mimeType
-        );
-
-        return {
-            id: transferable.id,
-            name: transferable.name,
-            type: transferable.type,
-            blob,
-            metadata: transferable.metadata,
-        };
-    }
-
-    static async attachmentToTransferable(attachment: Attachment): Promise<TransferableAttachment> {
-        const base64Data = await this.blobToBase64(attachment.blob);
-
-        return {
-            id: attachment.id,
-            name: attachment.name,
-            type: attachment.type,
-            base64Data,
-            metadata: attachment.metadata,
-        };
-    }
-
-    static async downloadBlob(blob: Blob, filename: string): Promise<void> {
-        if (!blob || !(blob instanceof Blob)) {
-            console.error('Invalid blob provided:', blob);
-            throw new Error('Invalid Blob object provided for download');
+    static async downloadBase64(base64Data: string, filename: string, mimeType?: string): Promise<void> {
+        if (!base64Data) {
+            throw new Error('Invalid base64 data provided for download');
         }
 
-        if (blob.size === 0) {
-            throw new Error('Cannot download an empty file');
-        }
-
+        const blob = this.base64ToBlob(base64Data, mimeType);
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;

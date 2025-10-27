@@ -7,6 +7,7 @@ import type {
     Attachment,
 } from '../shared/types';
 import { MESSAGE_TIMEOUT, TOKEN_REFRESH_BUFFER } from '../shared/constants';
+import { FileUtils } from '../shared/utils';
 
 // ======================== CONFIGURATION ========================
 const API_URL = import.meta.env.VITE_API_URL || '';
@@ -235,7 +236,10 @@ async function sendAttachmentsToApi(attachments: Attachment[], token: string): P
         const formData = new FormData();
 
         attachments.forEach((attachment, index) => {
-            const file = new File([attachment.blob], attachment.name, {
+            // Convert base64 to Blob for API upload
+            const blob = FileUtils.base64ToBlob(attachment.base64Data, attachment.metadata.mimeType);
+
+            const file = new File([blob], attachment.name, {
                 type: attachment.metadata.mimeType || 'application/octet-stream',
             });
             formData.append(`files`, file);

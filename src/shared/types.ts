@@ -15,19 +15,11 @@ export interface AttachmentMetadata {
     sourceUrl?: string;
 }
 
-export interface TransferableAttachment {
-    id: string;
-    name: string;
-    type: FileType;
-    base64Data: string;
-    metadata: AttachmentMetadata;
-}
-
 export interface Attachment {
     id: string;
     name: string;
     type: FileType;
-    blob: Blob;
+    base64Data: string;
     metadata: AttachmentMetadata;
 }
 
@@ -91,7 +83,7 @@ export type Message =
 
 export interface FetchResult {
     success: boolean;
-    attachments?: TransferableAttachment[];
+    attachments?: Attachment[];
     error?: string;
 }
 
