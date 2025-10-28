@@ -6,11 +6,25 @@
     "permissions": [
         "storage",
         "tabs",
-        "scripting"
+        "scripting",
+        "webRequest"
     ],
     "host_permissions": [
         "*://mail.google.com/*",
-        "*://outlook.live.com/*"
+        "*://*.gmail.com/*",
+        "*://mail.yahoo.com/*",
+        "*://*.yahoo.com/*",
+        "*://outlook.live.com/*",
+        "*://outlook.office365.com/*",
+        "*://outlook.office.com/*",
+        "*://*.outlook.com/*",
+        "*://*.office.com/*",
+        "*://*.icloud.com/*",
+        "*://mail.protonmail.com/*",
+        "*://*.protonmail.com/*",
+        "*://mail.zoho.com/*",
+        "*://*.zoho.com/*",
+        "*://*.aol.com/*"
     ],
     "action": {
         "default_popup": "popup.html",
@@ -24,7 +38,20 @@
         {
             "matches": [
                 "*://mail.google.com/*",
-                "*://outlook.live.com/*"
+                "*://*.gmail.com/*",
+                "*://mail.yahoo.com/*",
+                "*://*.yahoo.com/*",
+                "*://outlook.live.com/*",
+                "*://outlook.office365.com/*",
+                "*://outlook.office.com/*",
+                "*://*.outlook.com/*",
+                "*://*.office.com/*",
+                "*://*.icloud.com/*",
+                "*://mail.protonmail.com/*",
+                "*://*.protonmail.com/*",
+                "*://mail.zoho.com/*",
+                "*://*.zoho.com/*",
+                "*://*.aol.com/*"
             ],
             "js": [
                 "src/chrome/content.ts"

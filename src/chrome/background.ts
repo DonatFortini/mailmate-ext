@@ -1,15 +1,33 @@
 import type {
     Message,
+    BaseMessage,
     AuthResult,
     FetchResult,
     ProcessResult,
-    AuthTokens,
-    Attachment,
-    ProcessAttachmentsMessage,
-    FetchAttachmentsMessage,
+    EmailData,
+    FetchMailMessage,
+    ProcessMailMessage,
     LoginMessage,
 } from '../shared/types';
-import { MESSAGE_TIMEOUT, TOKEN_REFRESH_BUFFER } from '../shared/constants';
+import { MESSAGE_TIMEOUT } from '../shared/constants';
+import {
+    calculateTokenExpiry,
+    isTokenExpired,
+    getTimeUntilRefresh,
+    validateAuthResponse,
+    buildUserObject,
+    isAuthError,
+    getChromeErrorMessage,
+    buildApiUrl,
+    makeApiRequest,
+} from '../shared/utils';
+import {
+    getAuthData,
+    setAuthData,
+    clearAuthData,
+    getJwtToken,
+    getUserData,
+} from '../shared/storage';
 
 // ======================== CONFIGURATION ========================
 const API_URL = import.meta.env.VITE_API_URL || '';
@@ -17,49 +35,12 @@ const API_PREFIX = import.meta.env.VITE_API_PREFIX || '';
 
 let refreshTimerId: number | null = null;
 
-// ======================== AUTH MANAGEMENT ========================
-chrome.runtime.onStartup.addListener(() => {
-    checkAuthStatus();
-});
-
-chrome.runtime.onInstalled.addListener(() => {
-    checkAuthStatus();
-});
-
-function checkAuthStatus(): Promise<boolean> {
-    return new Promise((resolve) => {
-        chrome.storage.local.get(['jwt', 'refreshToken', 'tokenExpiry', 'user'], (result) => {
-            if (!result.jwt || !result.refreshToken) {
-                console.log('[Background] No auth tokens found');
-                resolve(false);
-                return;
-            }
-
-            if (isTokenExpired(result.tokenExpiry)) {
-                console.log('[Background] Token expired, attempting refresh');
-                refreshToken()
-                    .then((success) => resolve(success))
-                    .catch(() => resolve(false));
-                return;
-            }
-
-            const timeToExpiry = result.tokenExpiry - Date.now();
-            console.log(`[Background] Token valid for ${Math.floor(timeToExpiry / 60000)} minutes`);
-            setupTokenRefresh(result.tokenExpiry);
-            resolve(true);
-        });
-    });
-}
-
-function isTokenExpired(expiryTime: number): boolean {
-    return Date.now() + TOKEN_REFRESH_BUFFER > expiryTime;
-}
-
+// ======================== TOKEN REFRESH MANAGEMENT ========================
 function setupTokenRefresh(expiryTime: number): void {
-    if (refreshTimerId) {
-        clearTimeout(refreshTimerId);
-    }
-    const timeUntilRefresh = expiryTime - Date.now() - TOKEN_REFRESH_BUFFER;
+    clearTokenRefresh();
+
+    const timeUntilRefresh = getTimeUntilRefresh(expiryTime);
+
     if (timeUntilRefresh > 0) {
         console.log(`[Background] Scheduling token refresh in ${Math.floor(timeUntilRefresh / 60000)} minutes`);
         refreshTimerId = setTimeout(() => refreshToken(), timeUntilRefresh) as unknown as number;
@@ -68,91 +49,156 @@ function setupTokenRefresh(expiryTime: number): void {
     }
 }
 
-async function refreshToken(): Promise<boolean> {
-    return new Promise((resolve) => {
-        chrome.storage.local.get(['refreshToken'], (result) => {
-            if (!result.refreshToken) {
-                console.log('[Background] No refresh token found');
-                resolve(false);
-                return;
-            }
-
-            console.log('[Background] Refreshing token');
-            fetch(`${API_URL}${API_PREFIX}/auth/refresh`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ refresh_token: result.refreshToken }),
-            })
-                .then((response) => {
-                    if (!response.ok) throw new Error('Token refresh failed');
-                    return response.json();
-                })
-                .then((data) => {
-                    const tokenExpiry = Date.now() + data.expires_in * 1000;
-                    const tokenData: AuthTokens = {
-                        jwt: data.token,
-                        refreshToken: data.refresh_token || result.refreshToken,
-                        tokenExpiry: tokenExpiry,
-                        user: data.user,
-                    };
-
-                    chrome.storage.local.set(tokenData, () => {
-                        console.log('[Background] Token refreshed successfully');
-                        setupTokenRefresh(tokenExpiry);
-                        resolve(true);
-                    });
-                })
-                .catch((error) => {
-                    console.error('[Background] Error refreshing token:', error);
-                    chrome.storage.local.remove(['jwt', 'refreshToken', 'tokenExpiry', 'user'], () => {
-                        console.log('[Background] Auth data cleared due to refresh failure');
-                    });
-                    resolve(false);
-                });
-        });
-    });
+function clearTokenRefresh(): void {
+    if (refreshTimerId) {
+        clearTimeout(refreshTimerId);
+        refreshTimerId = null;
+    }
 }
 
-// ======================== MESSAGE HANDLING ========================
-chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) => {
-    console.log('[Background] Received message:', message.action);
+// ======================== AUTH LOGIC ========================
+async function storeAuthResponse(data: any, email?: string): Promise<any> {
+    validateAuthResponse(data);
 
-    switch (message.action) {
-        case 'FETCH_ATTACHMENTS':
-            handleFetchAttachments(message as FetchAttachmentsMessage, sendResponse);
-            return true;
+    const user = buildUserObject(data, email);
+    const tokenExpiry = calculateTokenExpiry(data.expires_in || 3600);
 
-        case 'PROCESS_ATTACHMENTS':
-            handleProcessAttachments(message as ProcessAttachmentsMessage, sendResponse);
-            return true;
+    await setAuthData({
+        jwt: data.token,
+        refreshToken: data.refresh_token,
+        tokenExpiry,
+        user,
+    });
 
-        case 'LOGIN':
-            handleLogin(message as LoginMessage, sendResponse);
-            return true;
+    setupTokenRefresh(tokenExpiry);
+    return user;
+}
 
-        case 'LOGOUT':
-            handleLogout(sendResponse);
-            return true;
+async function checkAuthStatus(): Promise<boolean> {
+    const authData = await getAuthData();
 
-        case 'CHECK_AUTH':
-            handleCheckAuth(sendResponse);
-            return true;
-
-        case 'REFRESH_TOKEN':
-            handleRefreshToken(sendResponse);
-            return true;
-
-        default:
-            console.log('[Background] Unknown message action:', message.action);
-            return false;
+    if (!authData) {
+        console.log('[Background] No auth tokens found');
+        return false;
     }
-});
 
-// ======================== HANDLERS ========================
-function handleFetchAttachments(message: FetchAttachmentsMessage, sendResponse: (response: FetchResult) => void): void {
-    console.log(`[Background] Relaying fetch request to tab ${message.tabId}`);
+    if (isTokenExpired(authData.tokenExpiry)) {
+        console.log('[Background] Token expired, attempting refresh');
+        try {
+            return await refreshToken();
+        } catch {
+            return false;
+        }
+    }
 
-    checkAuthStatus().then((isAuthenticated) => {
+    const timeToExpiry = authData.tokenExpiry - Date.now();
+    console.log(`[Background] Token valid for ${Math.floor(timeToExpiry / 60000)} minutes`);
+    setupTokenRefresh(authData.tokenExpiry);
+    return true;
+}
+
+async function refreshToken(): Promise<boolean> {
+    const authData = await getAuthData();
+
+    if (!authData?.refreshToken) {
+        console.log('[Background] No refresh token found');
+        return false;
+    }
+
+    try {
+        console.log('[Background] Refreshing token');
+        const url = buildApiUrl(API_URL, API_PREFIX, '/auth/refresh');
+        const data = await makeApiRequest(url, {
+            method: 'POST',
+            body: JSON.stringify({ refresh_token: authData.refreshToken }),
+        });
+
+        const tokenExpiry = calculateTokenExpiry(data.expires_in);
+        await setAuthData({
+            jwt: data.token,
+            refreshToken: data.refresh_token || authData.refreshToken,
+            tokenExpiry,
+            user: data.user,
+        });
+
+        console.log('[Background] Token refreshed successfully');
+        setupTokenRefresh(tokenExpiry);
+        return true;
+    } catch (error) {
+        console.error('[Background] Error refreshing token:', error);
+        await clearAuthData();
+        return false;
+    }
+}
+
+function initAuthChecks(): void {
+    const run = () => {
+        console.log('[Background] Initial auth check');
+        checkAuthStatus();
+    };
+
+    chrome.runtime.onStartup.addListener(run);
+    chrome.runtime.onInstalled.addListener(run);
+    run();
+}
+
+// ======================== API REQUESTS ========================
+async function apiRequest(endpoint: string, options: RequestInit = {}, requireAuth = false): Promise<any> {
+    const url = buildApiUrl(API_URL, API_PREFIX, endpoint);
+
+    if (requireAuth) {
+        const token = await getJwtToken();
+        if (!token) {
+            throw new Error('Not authenticated');
+        }
+        return makeApiRequest(url, options, token);
+    }
+
+    return makeApiRequest(url, options);
+}
+
+async function sendEmailToApi(emailData: EmailData): Promise<any> {
+    console.log(`[Background] Sending email to API:`, {
+        id: emailData.id,
+        subject: emailData.subject,
+        attachmentsCount: emailData.attachments.length,
+    });
+
+    const payload = {
+        id: emailData.id,
+        subject: emailData.subject,
+        sender: emailData.sender,
+        recipients: emailData.recipients,
+        body: emailData.body,
+        attachments: emailData.attachments.length > 0
+            ? emailData.attachments.map((att) => ({
+                id: att.id,
+                name: att.name,
+                type: att.type,
+                base64Data: att.base64Data,
+                metadata: {
+                    size: att.metadata.size,
+                    mimeType: att.metadata.mimeType,
+                },
+            }))
+            : null,
+    };
+
+    return apiRequest('/services/mail', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+    }, true);
+}
+
+// ======================== MESSAGE HANDLERS ========================
+async function handleFetchMail(
+    message: FetchMailMessage,
+    sendResponse: (response: FetchResult) => void
+): Promise<void> {
+    console.log(`[Background] Fetching mail from tab ${message.tabId}`);
+
+    try {
+        const isAuthenticated = await checkAuthStatus();
         if (!isAuthenticated) {
             sendResponse({ success: false, error: 'Authentication required' });
             return;
@@ -164,238 +210,180 @@ function handleFetchAttachments(message: FetchAttachmentsMessage, sendResponse: 
         }
 
         const messageTimeout = setTimeout(() => {
-            console.error('[Background] Timeout waiting for content script response');
-            sendResponse({ success: false, error: 'Timeout waiting for content script response' });
+            console.error('[Background] Timeout waiting for content script');
+            sendResponse({ success: false, error: 'Timeout waiting for content script' });
         }, MESSAGE_TIMEOUT);
 
         chrome.tabs.sendMessage(
             message.tabId,
-            {
-                action: 'GET_ATTACHMENTS',
-                domain: message.domain,
-            },
+            { action: 'FETCH_MAIL', domain: message.domain },
             (response: FetchResult) => {
                 clearTimeout(messageTimeout);
 
                 if (chrome.runtime.lastError) {
-                    const errorMsg = chrome.runtime.lastError.message || 'Unknown error';
-                    console.error('[Background] Chrome runtime error:', errorMsg);
-                    sendResponse({
-                        success: false,
-                        error: errorMsg.includes('Receiving end does not exist')
-                            ? 'Please refresh the page to activate the extension'
-                            : errorMsg,
-                    });
+                    console.error('[Background] Chrome error:', chrome.runtime.lastError);
+                    const errorMsg = getChromeErrorMessage(chrome.runtime.lastError);
+                    sendResponse({ success: false, error: errorMsg });
                     return;
                 }
 
                 sendResponse(response);
             }
         );
-    });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        sendResponse({ success: false, error: message });
+    }
 }
 
-function handleProcessAttachments(message: ProcessAttachmentsMessage, sendResponse: (response: ProcessResult) => void): void {
-    console.log(`[Background] Processing ${message.attachments?.length || 0} attachments`);
+async function handleProcessMail(
+    message: ProcessMailMessage,
+    sendResponse: (response: ProcessResult) => void
+): Promise<void> {
+    console.log(`[Background] Processing email: "${message.emailData.subject}"`);
 
-    chrome.storage.local.get(['jwt'], (result) => {
-        if (!result.jwt) {
-            sendResponse({ success: false, error: 'Not authenticated' });
+    try {
+        const response = await sendEmailToApi(message.emailData);
+        console.log('[Background] API response:', response);
+        sendResponse({ success: true, data: response });
+    } catch (error: any) {
+        console.error('[Background] API error:', error);
+
+        if (isAuthError(error)) {
+            refreshToken().catch(() => {
+                console.log('[Background] Auth refresh failed');
+            });
+        }
+
+        const message = error?.message || 'Failed to process email';
+        sendResponse({ success: false, error: message });
+    }
+}
+
+async function handleLogin(
+    message: LoginMessage,
+    sendResponse: (response: AuthResult) => void
+): Promise<void> {
+    console.log('[Background] Processing login request');
+
+    try {
+        const data = await apiRequest('/auth/login', {
+            method: 'POST',
+            body: JSON.stringify({
+                email: message.email,
+                password: message.password,
+            }),
+        });
+
+        console.log('[Background] Login successful');
+        const user = await storeAuthResponse(data, message.email);
+        sendResponse({ success: true, user, token: data.token });
+    } catch (error) {
+        console.error('[Background] Login error:', error);
+        const message = error instanceof Error ? error.message : String(error);
+        sendResponse({ success: false, error: message });
+    }
+}
+
+async function handleLogout(_message: BaseMessage, sendResponse: (response: AuthResult) => void): Promise<void> {
+    console.log('[Background] Processing logout request');
+
+    clearTokenRefresh();
+
+    try {
+        const token = await getJwtToken();
+
+        await clearAuthData();
+
+        if (token) {
+            await apiRequest('/auth/logout', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            console.log('[Background] Logout successful');
+        }
+
+        sendResponse({ success: true });
+    } catch (error) {
+        console.error('[Background] Logout error:', error);
+        sendResponse({ success: true });
+    }
+}
+
+async function handleCheckAuth(_message: BaseMessage, sendResponse: (response: AuthResult) => void): Promise<void> {
+    console.log('[Background] Checking auth status');
+
+    try {
+        const isAuthenticated = await checkAuthStatus();
+
+        if (!isAuthenticated) {
+            if (typeof sendResponse === 'function') {
+                sendResponse({ success: false, error: 'Not authenticated' });
+            } else {
+                console.warn('[Background] sendResponse is not a function for CHECK_AUTH');
+            }
             return;
         }
 
-        sendAttachmentsToApi(message.attachments, result.jwt)
-            .then((apiResponse) => {
-                console.log('[Background] API response:', apiResponse);
-                sendResponse({ success: true, data: apiResponse });
-            })
-            .catch((error) => {
-                console.error('[Background] API error:', error);
-
-                if (error.status === 401 || error.status === 403) {
-                    refreshToken().catch(() => {
-                        console.log('[Background] Auth refresh failed after API error');
-                    });
-                }
-
-                sendResponse({
-                    success: false,
-                    error: error.message || 'Failed to process attachments',
-                });
-            });
-    });
-}
-
-// ======================== API COMMUNICATION ========================
-async function sendAttachmentsToApi(attachments: Attachment[], token: string): Promise<any> {
-    if (!API_URL) {
-        throw new Error('API URL not configured');
-    }
-
-    console.log(`[Background] Sending ${attachments.length} attachments to API as base64`);
-
-    try {
-        const payload = {
-            attachments: attachments.map(att => ({
-                id: att.id,
-                name: att.name,
-                type: att.type,
-                base64Data: att.base64Data,
-                metadata: {
-                    size: att.metadata.size,
-                    mimeType: att.metadata.mimeType,
-                },
-            })),
-        };
-
-        const response = await fetch(`${API_URL}${API_PREFIX}/services`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify(payload),
-        });
-
-        if (!response.ok) {
-            const contentType = response.headers.get('content-type');
-            if (contentType && contentType.includes('application/json')) {
-                const errorData = await response.json();
-                const errorMessage = errorData.message || errorData.error || `API error: ${response.status}`;
-                const error: any = new Error(errorMessage);
-                error.status = response.status;
-                throw error;
-            } else {
-                const errorText = await response.text();
-                const error: any = new Error(errorText || `API error: ${response.status}`);
-                error.status = response.status;
-                throw error;
-            }
+        const user = await getUserData();
+        if (typeof sendResponse === 'function') {
+            sendResponse({ success: true, user });
+        } else {
+            console.warn('[Background] sendResponse is not a function for CHECK_AUTH');
         }
-
-        return await response.json();
     } catch (error) {
-        console.error('[Background] API request failed:', error);
-        throw error;
+        const message = error instanceof Error ? error.message : String(error);
+        if (typeof sendResponse === 'function') {
+            sendResponse({ success: false, error: message });
+        } else {
+            console.error('[Background] Error checking auth but sendResponse not available:', message);
+        }
     }
 }
 
-function handleLogin(message: LoginMessage, sendResponse: (response: AuthResult) => void): void {
-    console.log('[Background] Processing login request');
-
-    fetch(`${API_URL}${API_PREFIX}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            email: message.email,
-            password: message.password,
-        }),
-    })
-        .then((response) => {
-            if (!response.ok) throw new Error(`Login failed with status: ${response.status}`);
-            return response.json();
-        })
-        .then((data) => {
-            if (!data.token && !data.refresh_token) {
-                throw new Error('Invalid authentication response');
-            }
-
-            console.log('[Background] Login successful');
-            const user = data.user || {
-                id: data.user_id || '',
-                email: message.email,
-                displayName: data.user?.name || message.email,
-            };
-
-            const tokenExpiry = Date.now() + (data.expires_in || 3600) * 1000;
-            chrome.storage.local.set(
-                {
-                    jwt: data.token,
-                    refreshToken: data.refresh_token,
-                    tokenExpiry: tokenExpiry,
-                    user: user,
-                },
-                () => {
-                    setupTokenRefresh(tokenExpiry);
-                    sendResponse({ success: true, user: user, token: data.token });
-                }
-            );
-        })
-        .catch((error) => {
-            console.error('[Background] Login error:', error);
-            sendResponse({ success: false, error: error.message });
-        });
-}
-
-function handleLogout(sendResponse: (response: AuthResult) => void): void {
-    console.log('[Background] Processing logout request');
-
-    if (refreshTimerId) {
-        clearTimeout(refreshTimerId);
-        refreshTimerId = null;
-    }
-
-    chrome.storage.local.get(['jwt'], (result) => {
-        chrome.storage.local.remove(['jwt', 'refreshToken', 'tokenExpiry', 'user'], () => {
-            console.log('[Background] Auth data cleared');
-
-            if (result.jwt) {
-                fetch(`${API_URL}${API_PREFIX}/auth/logout`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        Authorization: `Bearer ${result.jwt}`,
-                    },
-                })
-                    .then(() => {
-                        console.log('[Background] Logout successful');
-                        sendResponse({ success: true });
-                    })
-                    .catch((error) => {
-                        console.error('[Background] Logout error:', error);
-                        sendResponse({ success: false, error: error.message });
-                    });
-            } else {
-                sendResponse({ success: true });
-            }
-        });
-    });
-}
-
-function handleCheckAuth(sendResponse: (response: AuthResult) => void): void {
-    console.log('[Background] Checking auth status');
-
-    checkAuthStatus()
-        .then((isAuthenticated) => {
-            if (isAuthenticated) {
-                chrome.storage.local.get(['user'], (result) => {
-                    sendResponse({ success: true, user: result.user });
-                });
-            } else {
-                sendResponse({ success: false, error: 'Not authenticated' });
-            }
-        })
-        .catch((error) => {
-            sendResponse({ success: false, error: error.message });
-        });
-}
-
-function handleRefreshToken(sendResponse: (response: AuthResult) => void): void {
+async function handleRefreshToken(_message: BaseMessage, sendResponse: (response: AuthResult) => void): Promise<void> {
     console.log('[Background] Manual token refresh requested');
 
-    refreshToken()
-        .then((success) => {
-            if (success) {
-                chrome.storage.local.get(['user'], (result) => {
-                    sendResponse({ success: true, user: result.user });
-                });
-            } else {
-                sendResponse({ success: false, error: 'Refresh failed' });
-            }
-        })
-        .catch((error) => {
-            sendResponse({ success: false, error: error.message });
-        });
+    try {
+        const success = await refreshToken();
+
+        if (!success) {
+            sendResponse({ success: false, error: 'Refresh failed' });
+            return;
+        }
+
+        const user = await getUserData();
+        sendResponse({ success: true, user });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        sendResponse({ success: false, error: message });
+    }
 }
 
+// ======================== MESSAGE ROUTING ========================
+chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) => {
+    console.log('[Background] Received message:', message.action);
+
+    const handlers: Record<string, (msg: any, res: any) => Promise<void>> = {
+        FETCH_MAIL: handleFetchMail,
+        PROCESS_MAIL: handleProcessMail,
+        LOGIN: handleLogin,
+        LOGOUT: handleLogout,
+        CHECK_AUTH: handleCheckAuth,
+        REFRESH_TOKEN: handleRefreshToken,
+    };
+
+    const handler = handlers[message.action];
+
+    if (handler) {
+        handler(message, sendResponse);
+        return true;
+    }
+
+    console.log('[Background] Unknown action:', message.action);
+    return false;
+});
+
+// ======================== INITIALIZATION ========================
+initAuthChecks();
 console.log('[Background] MailMate Extension background script initialized');

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { AuthResult, User } from '../../shared/types';
+import { sendChromeMessage, getErrorMessage } from '../../shared/utils';
 
 export function useAuth() {
     const [user, setUser] = useState<User | null>(null);
@@ -7,22 +8,10 @@ export function useAuth() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string>('');
 
-    const sendMessage = useCallback(<T,>(message: any): Promise<T> => {
-        return new Promise((resolve, reject) => {
-            chrome.runtime.sendMessage(message, (response: T) => {
-                if (chrome.runtime.lastError) {
-                    reject(new Error(chrome.runtime.lastError.message));
-                } else {
-                    resolve(response);
-                }
-            });
-        });
-    }, []);
-
     const checkAuth = useCallback(async () => {
         try {
             setLoading(true);
-            const result = await sendMessage<AuthResult>({ action: 'CHECK_AUTH' });
+            const result = await sendChromeMessage<AuthResult>({ action: 'CHECK_AUTH' });
 
             if (result.success && result.user) {
                 setUser(result.user);
@@ -38,7 +27,7 @@ export function useAuth() {
         } finally {
             setLoading(false);
         }
-    }, [sendMessage]);
+    }, []);
 
     const login = useCallback(
         async (email: string, password: string): Promise<boolean> => {
@@ -46,7 +35,7 @@ export function useAuth() {
                 setLoading(true);
                 setError('');
 
-                const result = await sendMessage<AuthResult>({
+                const result = await sendChromeMessage<AuthResult>({
                     action: 'LOGIN',
                     email,
                     password,
@@ -61,7 +50,7 @@ export function useAuth() {
                     return false;
                 }
             } catch (err) {
-                const errorMessage = err instanceof Error ? err.message : 'Login failed';
+                const errorMessage = getErrorMessage(err, 'Login failed');
                 setError(errorMessage);
                 console.error('[useAuth] Login error:', err);
                 return false;
@@ -69,13 +58,13 @@ export function useAuth() {
                 setLoading(false);
             }
         },
-        [sendMessage]
+        []
     );
 
     const logout = useCallback(async (): Promise<boolean> => {
         try {
             setLoading(true);
-            const result = await sendMessage<AuthResult>({ action: 'LOGOUT' });
+            const result = await sendChromeMessage<AuthResult>({ action: 'LOGOUT' });
 
             if (result.success) {
                 setUser(null);
@@ -89,7 +78,7 @@ export function useAuth() {
         } finally {
             setLoading(false);
         }
-    }, [sendMessage]);
+    }, []);
 
     useEffect(() => {
         checkAuth();

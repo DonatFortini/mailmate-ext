@@ -23,6 +23,15 @@ export interface Attachment {
     metadata: AttachmentMetadata;
 }
 
+export interface EmailData {
+    id: string;
+    subject: string;
+    sender: string;
+    recipients: string[];
+    body: string;
+    attachments: Attachment[];
+}
+
 export interface User {
     id: string;
     email: string;
@@ -46,22 +55,26 @@ export interface AuthResult {
 }
 
 export type MessageAction =
-    | 'FETCH_ATTACHMENTS'
-    | 'GET_ATTACHMENTS'
+    | 'FETCH_MAIL'
+    | 'PROCESS_MAIL'
     | 'LOGIN'
     | 'LOGOUT'
     | 'CHECK_AUTH'
-    | 'REFRESH_TOKEN'
-    | 'PROCESS_ATTACHMENTS';
+    | 'REFRESH_TOKEN';
 
 export interface BaseMessage {
     action: MessageAction;
 }
 
-export interface FetchAttachmentsMessage extends BaseMessage {
-    action: 'FETCH_ATTACHMENTS';
+export interface FetchMailMessage extends BaseMessage {
+    action: 'FETCH_MAIL';
     tabId: number;
     domain: string;
+}
+
+export interface ProcessMailMessage extends BaseMessage {
+    action: 'PROCESS_MAIL';
+    emailData: EmailData;
 }
 
 export interface LoginMessage extends BaseMessage {
@@ -70,20 +83,15 @@ export interface LoginMessage extends BaseMessage {
     password: string;
 }
 
-export interface ProcessAttachmentsMessage extends BaseMessage {
-    action: 'PROCESS_ATTACHMENTS';
-    attachments: Attachment[];
-}
-
 export type Message =
-    | FetchAttachmentsMessage
+    | FetchMailMessage
+    | ProcessMailMessage
     | LoginMessage
-    | ProcessAttachmentsMessage
     | BaseMessage;
 
 export interface FetchResult {
     success: boolean;
-    attachments?: Attachment[];
+    emailData?: EmailData;
     error?: string;
 }
 
