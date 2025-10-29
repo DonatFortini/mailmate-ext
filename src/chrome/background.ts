@@ -27,6 +27,7 @@ import {
     clearAuthData,
     getJwtToken,
     getUserData,
+    clearAllEmailCaches,
 } from '../shared/storage';
 
 // ======================== CONFIGURATION ========================
@@ -245,6 +246,9 @@ async function handleProcessMail(
     try {
         const response = await sendEmailToApi(message.emailData);
         console.log('[Background] API response:', response);
+        clearAllEmailCaches().catch(() => {
+            console.warn('[Background] Failed to clear email caches after processing');
+        });
         sendResponse({ success: true, data: response });
     } catch (error: any) {
         console.error('[Background] API error:', error);
