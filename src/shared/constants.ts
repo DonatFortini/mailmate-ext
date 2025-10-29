@@ -8,18 +8,6 @@ export const SUPPORTED_DOMAINS = {
 
 export type SupportedDomain = (typeof SUPPORTED_DOMAINS)[keyof typeof SUPPORTED_DOMAINS];
 
-// ======================== MAIL SELECTORS ========================
-export const MAIL_SELECTORS = {
-    GMAIL: 'span[class*="aZo"], img.CToWUd.a6T',
-    OUTLOOK: `
-    div[role='attachment'] img,
-    div.allowTextSelection img:not(.InlineImage),
-    div.AttachmentPreview img,
-    div.FileAttachment img,
-    div.InlineAttachment img
-  `,
-} as const;
-
 // ======================== FILE TYPE MAPPINGS ========================
 export const FILE_TYPE_MAP = {
     extensions: {

@@ -95,6 +95,7 @@ export interface FetchResult {
     error?: string;
 }
 
+//TODO: refine 'any' type when backend is stabilized
 export interface ProcessResult {
     success: boolean;
     data?: any;

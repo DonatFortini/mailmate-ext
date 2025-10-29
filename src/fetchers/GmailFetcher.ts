@@ -1,8 +1,8 @@
 import { SUPPORTED_DOMAINS } from "../shared/constants";
-import { AttachmentFetcher } from "./AttachmentFetcher";
-import { FileUtils } from "../shared/utils";
+import { MailFetcher } from "./MailFetcher";
+import { FileUtils, HtmlSanitizer } from "../shared/utils";
 
-export class GmailFetcher extends AttachmentFetcher {
+export class GmailFetcher extends MailFetcher {
     private selectors = {
         // Header info
         subject: 'div.ha h2.hP',
@@ -70,7 +70,8 @@ export class GmailFetcher extends AttachmentFetcher {
     protected getEmailBody(): string {
         const activeEmail = this.getActiveEmail();
         const contentDiv = activeEmail?.querySelector(this.selectors.contentDiv);
-        return contentDiv?.innerHTML.trim() || '';
+        const html = contentDiv?.innerHTML.trim() || '';
+        return HtmlSanitizer.htmlToText(html);
     }
 
     protected getAttachmentElements(): HTMLElement[] {
@@ -90,3 +91,5 @@ export class GmailFetcher extends AttachmentFetcher {
         return elements;
     }
 }
+
+

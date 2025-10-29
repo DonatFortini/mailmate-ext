@@ -43,6 +43,8 @@ async function handleFetchMail(
             attachmentsCount: emailData.attachments.length,
         });
 
+        console.log('[Content] Email data processed:', emailData);
+
         sendResponse({
             success: true,
             emailData: emailData,

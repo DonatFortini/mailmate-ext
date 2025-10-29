@@ -260,3 +260,96 @@ export function buildApiUrl(baseUrl: string, prefix: string, endpoint: string): 
     }
     return `${baseUrl}${prefix}${endpoint}`;
 }
+
+
+export class HtmlSanitizer {
+    static htmlToText(html: string): string {
+        if (!html) return '';
+
+        const temp = document.createElement('div');
+        temp.innerHTML = html;
+
+        this.removeUnwantedElements(temp);
+        this.processElements(temp);
+
+        let text = temp.textContent || temp.innerText || '';
+        text = this.cleanupText(text);
+
+        return text;
+    }
+
+    private static removeUnwantedElements(element: HTMLElement): void {
+        const unwantedSelectors = [
+            'script',
+            'style',
+            'noscript',
+            'iframe',
+            'img[width="1"]',
+            'img[height="1"]',
+            '.adL',
+            '.yj6qo',
+        ];
+
+        unwantedSelectors.forEach(selector => {
+            element.querySelectorAll(selector).forEach(el => el.remove());
+        });
+    }
+
+    private static processElements(element: HTMLElement): void {
+        const blockElements = element.querySelectorAll(
+            'p, div, br, h1, h2, h3, h4, h5, h6, li, tr'
+        );
+
+        blockElements.forEach(el => {
+            if (el.tagName === 'BR') {
+                el.replaceWith('\n');
+            } else if (el.tagName === 'LI') {
+                const text = document.createTextNode('\n• ');
+                el.prepend(text);
+            } else {
+                el.append(document.createTextNode('\n'));
+            }
+        });
+
+        element.querySelectorAll('a').forEach(link => {
+            const href = link.getAttribute('href');
+            const text = link.textContent;
+            if (href && href !== text && !href.startsWith('javascript:')) {
+                link.textContent = `${text} (${href})`;
+            }
+        });
+    }
+
+    private static cleanupText(text: string): string {
+        return text
+            .replace(/&nbsp;/g, ' ')
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"')
+            .replace(/&#39;/g, "'")
+            .replace(/[ \t]+/g, ' ')
+            .replace(/\n\s+\n/g, '\n\n')
+            .replace(/\n{3,}/g, '\n\n')
+            .split('\n')
+            .map(line => line.trim())
+            .join('\n')
+            .trim();
+    }
+
+    static htmlToPlainText(html: string): string {
+        if (!html) return '';
+
+        const temp = document.createElement('div');
+        temp.innerHTML = html;
+
+        this.removeUnwantedElements(temp);
+
+        let text = temp.textContent || temp.innerText || '';
+
+        return text
+            .replace(/&nbsp;/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+}

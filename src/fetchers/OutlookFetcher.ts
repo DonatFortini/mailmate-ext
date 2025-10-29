@@ -1,8 +1,8 @@
 import { SUPPORTED_DOMAINS } from "../shared/constants";
-import { AttachmentFetcher } from "./AttachmentFetcher";
+import { MailFetcher } from "./MailFetcher";
 import { FileUtils } from "../shared/utils";
 
-export class OutlookFetcher extends AttachmentFetcher {
+export class OutlookFetcher extends MailFetcher {
     private selectors = {
         // Active email pane
         readingPane: 'div[role="region"][aria-label*="Reading pane"], div[role="main"]',

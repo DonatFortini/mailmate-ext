@@ -1,15 +1,15 @@
 import { SUPPORTED_DOMAINS, type SupportedDomain } from "../shared/constants";
-import type { AttachmentFetcher } from "./AttachmentFetcher";
+import type { MailFetcher } from "./MailFetcher";
 import { GmailFetcher } from "./GmailFetcher";
 import { OutlookFetcher } from "./OutlookFetcher";
 
 export class FetcherFactory {
-    private static fetcherInstances = new Map<SupportedDomain, AttachmentFetcher>();
+    private static fetcherInstances = new Map<SupportedDomain, MailFetcher>();
 
     /**
      * Create or get cached fetcher for domain
      */
-    static getFetcher(domain: string): AttachmentFetcher {
+    static getFetcher(domain: string): MailFetcher {
         const normalizedDomain = this.normalizeDomain(domain);
 
         if (!normalizedDomain) {
@@ -30,7 +30,7 @@ export class FetcherFactory {
     /**
      * Create fetcher instance based on domain
      */
-    private static createFetcher(domain: SupportedDomain): AttachmentFetcher {
+    private static createFetcher(domain: SupportedDomain): MailFetcher {
         switch (domain) {
             case SUPPORTED_DOMAINS.GMAIL:
                 return new GmailFetcher();
@@ -78,7 +78,6 @@ export class FetcherFactory {
      * Clear all cached fetchers
      */
     static clearCache(): void {
-        this.fetcherInstances.forEach(fetcher => fetcher.clearProcessedUrls());
         this.fetcherInstances.clear();
         console.log('[FetcherFactory] Cache cleared');
     }
@@ -89,8 +88,6 @@ export class FetcherFactory {
     static clearFetcher(domain: string): void {
         const normalizedDomain = this.normalizeDomain(domain);
         if (normalizedDomain && this.fetcherInstances.has(normalizedDomain)) {
-            const fetcher = this.fetcherInstances.get(normalizedDomain)!;
-            fetcher.clearProcessedUrls();
             this.fetcherInstances.delete(normalizedDomain);
             console.log(`[FetcherFactory] Cleared ${normalizedDomain} fetcher`);
         }

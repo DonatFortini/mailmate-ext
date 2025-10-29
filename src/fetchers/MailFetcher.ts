@@ -3,16 +3,13 @@ import type { Attachment, EmailData } from "../shared/types";
 import { FileUtils } from "../shared/utils";
 
 
-export abstract class AttachmentFetcher {
+export abstract class MailFetcher {
     protected domain: SupportedDomain;
-    protected processedUrls = new Set<string>();
 
     constructor(domain: SupportedDomain) {
         this.domain = domain;
     }
-    /**
-    * Abstract methods - must be implemented by subclasses
-    */
+
     protected abstract getEmailId(): string;
     protected abstract getEmailSubject(): string;
     protected abstract getEmailSender(): string;
@@ -20,9 +17,6 @@ export abstract class AttachmentFetcher {
     protected abstract getEmailBody(): string;
     protected abstract getAttachmentElements(): HTMLElement[];
 
-    /**
-     * Main method to fetch complete email data
-     */
     async fetchEmailData(): Promise<EmailData> {
         const id = this.getEmailId();
         const subject = this.getEmailSubject();
@@ -56,15 +50,17 @@ export abstract class AttachmentFetcher {
     ): Promise<Attachment[]> {
         console.log(`[AttachmentFetcher] Processing ${elements.length} elements`);
 
+        const processedUrls = new Set<string>();
+
         const attachmentPromises = elements.map(async (element) => {
             try {
                 const [url, name] = this.getSourceUrlAndName(element);
 
-                if (!url || this.processedUrls.has(url)) {
+                if (!url || processedUrls.has(url)) {
                     return null;
                 }
 
-                this.processedUrls.add(url);
+                processedUrls.add(url);
 
                 const blob = await this.fetchAsBlob(url);
                 if (!blob) return null;
@@ -134,9 +130,4 @@ export abstract class AttachmentFetcher {
             reader.readAsDataURL(blob);
         });
     }
-
-    clearProcessedUrls(): void {
-        this.processedUrls.clear();
-    }
-
 }
