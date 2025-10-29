@@ -1,29 +1,110 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import type { EmailData, FetchResult, ProcessResult } from '../../shared/types';
 import { sendChromeMessage, getErrorMessage } from '../../shared/utils';
+import {
+    cacheEmailData,
+    getCachedEmailData,
+    clearAllEmailCaches
+} from '../../shared/storage';
+
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 1000;
 
 export function useMail() {
     const [emailData, setEmailData] = useState<EmailData | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string>('');
     const [processing, setProcessing] = useState(false);
+    const [currentUrl, setCurrentUrl] = useState<string>('');
+
+    useEffect(() => {
+        async function loadCachedData() {
+            try {
+                const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+                const tab = tabs[0];
+
+                if (!tab?.url) return;
+
+                setCurrentUrl(tab.url);
+
+                const cached = await getCachedEmailData(tab.url);
+                if (cached) {
+                    console.log('[useMail] Restored from cache');
+                    setEmailData(cached);
+                }
+            } catch (err) {
+                console.error('[useMail] Error loading cache:', err);
+            }
+        }
+
+        loadCachedData();
+    }, []);
+
+    useEffect(() => {
+        const cleanup = async () => {
+            await clearAllEmailCaches();
+        };
+
+        return () => {
+            cleanup();
+        };
+    }, []);
+
+    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+    const fetchMailWithRetry = async (
+        tabId: number,
+        domain: string,
+        retryCount = 0
+    ): Promise<FetchResult> => {
+        try {
+            console.log(`[useMail] Fetch attempt ${retryCount + 1}/${MAX_RETRIES}`);
+
+            const result = await sendChromeMessage<FetchResult>({
+                action: 'FETCH_MAIL',
+                tabId,
+                domain,
+            });
+
+            return result;
+        } catch (err) {
+            if (retryCount < MAX_RETRIES - 1) {
+                console.log(`[useMail] Retry ${retryCount + 1} after error:`, err);
+                await sleep(RETRY_DELAY * (retryCount + 1));
+                return fetchMailWithRetry(tabId, domain, retryCount + 1);
+            }
+            throw err;
+        }
+    };
 
     const fetchMail = useCallback(
-        async (tabId: number, domain: string): Promise<boolean> => {
+        async (tabId: number, domain: string, url?: string): Promise<boolean> => {
             try {
                 setLoading(true);
                 setError('');
 
                 console.log('[useMail] Fetching email from', domain);
 
-                const result = await sendChromeMessage<FetchResult>({
-                    action: 'FETCH_MAIL',
-                    tabId,
-                    domain,
-                });
+                const effectiveUrl = url || currentUrl;
+                if (effectiveUrl) {
+                    const cached = await getCachedEmailData(effectiveUrl);
+                    if (cached && cached.attachments.length > 0) {
+                        console.log('[useMail] Using cached data');
+                        setEmailData(cached);
+                        setLoading(false);
+                        return true;
+                    }
+                }
+
+                const result = await fetchMailWithRetry(tabId, domain);
 
                 if (result.success && result.emailData) {
                     setEmailData(result.emailData);
+
+                    if (effectiveUrl) {
+                        await cacheEmailData(effectiveUrl, result.emailData);
+                    }
+
                     console.log('[useMail] Email fetched:', {
                         subject: result.emailData.subject,
                         attachments: result.emailData.attachments.length
@@ -44,7 +125,7 @@ export function useMail() {
                 setLoading(false);
             }
         },
-        []
+        [currentUrl]
     );
 
     const processMail = useCallback(

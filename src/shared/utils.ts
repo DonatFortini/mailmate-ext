@@ -1,6 +1,31 @@
 import { FileType } from './types';
 import { FILE_TYPE_MAP, SUPPORTED_DOMAINS, TOKEN_REFRESH_BUFFER } from './constants';
 
+// ======================== COMMON HELPERS ========================
+function decodeHtmlEntities(text: string): string {
+    return text
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'");
+}
+
+function normalizeWhitespace(text: string, preserveNewlines = false): string {
+    if (preserveNewlines) {
+        return text
+            .replace(/[ \t]+/g, ' ')
+            .replace(/\n\s+\n/g, '\n\n')
+            .replace(/\n{3,}/g, '\n\n')
+            .split('\n')
+            .map(line => line.trim())
+            .join('\n')
+            .trim();
+    }
+    return text.replace(/\s+/g, ' ').trim();
+}
+
 // ======================== FILE UTILITIES ========================
 export class FileUtils {
     static detectFileType(filename: string, mimeType?: string): FileType {
@@ -65,6 +90,19 @@ export class FileUtils {
 }
 
 // ======================== DOMAIN UTILITIES ========================
+const DOMAIN_PATTERNS = {
+    gmail: ['mail.google.com', 'gmail.com'],
+    outlook: ['outlook.live.com', 'outlook.office.com', 'outlook.office365.com', 'mail.outlook.com'],
+};
+
+function matchesDomainPattern(hostname: string, patterns: string[]): boolean {
+    return patterns.some(pattern =>
+        hostname === pattern ||
+        hostname.endsWith('.' + pattern) ||
+        hostname.includes(pattern)
+    );
+}
+
 export function extractDomain(url: string): string {
     try {
         return new URL(url).hostname;
@@ -76,34 +114,18 @@ export function extractDomain(url: string): string {
 export function isDomainSupported(domain: string): boolean {
     if (!domain) return false;
     const hostname = domain.toLowerCase();
-
-    const gmailPatterns = ['mail.google.com', 'gmail.com'];
-    const outlookPatterns = [
-        'outlook.live.com',
-        'outlook.office.com',
-        'outlook.office365.com',
-        'mail.outlook.com',
-    ];
-
-    const allPatterns = [...gmailPatterns, ...outlookPatterns];
-
-    return allPatterns.some(pattern =>
-        hostname === pattern ||
-        hostname.endsWith('.' + pattern) ||
-        hostname.includes(pattern)
-    );
+    const allPatterns = [...DOMAIN_PATTERNS.gmail, ...DOMAIN_PATTERNS.outlook];
+    return matchesDomainPattern(hostname, allPatterns);
 }
 
 export function getDomainType(domain: string): string {
     const hostname = domain.toLowerCase();
 
-    if (hostname.includes('google') || hostname.includes('gmail')) {
+    if (matchesDomainPattern(hostname, DOMAIN_PATTERNS.gmail)) {
         return SUPPORTED_DOMAINS.GMAIL;
     }
 
-    if (hostname.includes('outlook') ||
-        hostname.includes('office365') ||
-        hostname.includes('office.com')) {
+    if (matchesDomainPattern(hostname, DOMAIN_PATTERNS.outlook)) {
         return SUPPORTED_DOMAINS.OUTLOOK;
     }
 
@@ -123,12 +145,8 @@ export function debounce<T extends (...args: any[]) => any>(
 }
 
 export function getErrorMessage(error: unknown, defaultMessage = 'An error occurred'): string {
-    if (error instanceof Error) {
-        return error.message;
-    }
-    if (typeof error === 'string') {
-        return error;
-    }
+    if (error instanceof Error) return error.message;
+    if (typeof error === 'string') return error;
     return defaultMessage;
 }
 
@@ -143,6 +161,18 @@ export function sendChromeMessage<T>(message: any): Promise<T> {
             }
         });
     });
+}
+
+export function getChromeErrorMessage(error: chrome.runtime.LastError | undefined): string {
+    if (!error) return 'Unknown error';
+
+    const message = error.message || 'Unknown error';
+
+    if (message.includes('Receiving end does not exist')) {
+        return 'Please refresh the page to activate the extension';
+    }
+
+    return message;
 }
 
 // ======================== TOKEN UTILITIES ========================
@@ -165,7 +195,11 @@ export function formatTimeRemaining(milliseconds: number): string {
     return `${hours} hours ${minutes % 60} minutes`;
 }
 
-// ======================== API ERROR HANDLING ========================
+// ======================== API UTILITIES ========================
+export function isAuthError(error: any): boolean {
+    return error?.status === 401 || error?.status === 403;
+}
+
 export async function handleApiError(response: Response): Promise<never> {
     const contentType = response.headers.get('content-type') || '';
     const isJson = contentType.includes('application/json');
@@ -178,7 +212,7 @@ export async function handleApiError(response: Response): Promise<never> {
         } else {
             bodyMessage = await response.text();
         }
-    } catch (parseError) {
+    } catch {
         bodyMessage = `HTTP ${response.status}: ${response.statusText}`;
     }
 
@@ -196,12 +230,12 @@ export async function makeApiRequest(
     console.log('[API] Request to:', url);
 
     const response = await fetch(url, {
-        method: options.method || 'GET',
+        ...options,
         headers: {
             'Content-Type': 'application/json',
-            ...(token ? { 'Authorization': 'Bearer ' + token } : {})
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+            ...options.headers,
         },
-        body: options.body
     });
 
     console.log('[API] Status:', response.status);
@@ -211,11 +245,14 @@ export async function makeApiRequest(
     }
 
     const contentType = response.headers.get('content-type') || '';
-    if (contentType.includes('application/json')) {
-        return await response.json();
-    }
+    return contentType.includes('application/json') ? await response.json() : null;
+}
 
-    return null;
+export function buildApiUrl(baseUrl: string, prefix: string, endpoint: string): string {
+    if (!baseUrl || baseUrl === 'undefined') {
+        throw new Error('API URL not configured');
+    }
+    return `${baseUrl}${prefix}${endpoint}`;
 }
 
 // ======================== DATA VALIDATION ========================
@@ -236,81 +273,35 @@ export function buildUserObject(data: any, fallbackEmail?: string): any {
     };
 }
 
-// ======================== ERROR UTILITIES ========================
-export function isAuthError(error: any): boolean {
-    return error?.status === 401 || error?.status === 403;
-}
-
-export function getChromeErrorMessage(error: chrome.runtime.LastError | undefined): string {
-    if (!error) return 'Unknown error';
-
-    const message = error.message || 'Unknown error';
-
-    if (message.includes('Receiving end does not exist')) {
-        return 'Please refresh the page to activate the extension';
-    }
-
-    return message;
-}
-
-// ======================== URL UTILITIES ========================
-export function buildApiUrl(baseUrl: string, prefix: string, endpoint: string): string {
-    if (!baseUrl || baseUrl === 'undefined') {
-        throw new Error('API URL not configured');
-    }
-    return `${baseUrl}${prefix}${endpoint}`;
-}
-
-
+// ======================== HTML SANITIZER ========================
 export class HtmlSanitizer {
-    static htmlToText(html: string): string {
-        if (!html) return '';
+    private static readonly UNWANTED_SELECTORS = [
+        'script', 'style', 'noscript', 'iframe',
+        'img[width="1"]', 'img[height="1"]',
+        '.adL', '.yj6qo',
+    ];
 
-        const temp = document.createElement('div');
-        temp.innerHTML = html;
-
-        this.removeUnwantedElements(temp);
-        this.processElements(temp);
-
-        let text = temp.textContent || temp.innerText || '';
-        text = this.cleanupText(text);
-
-        return text;
-    }
+    private static readonly BLOCK_ELEMENTS = 'p, div, br, h1, h2, h3, h4, h5, h6, li, tr';
 
     private static removeUnwantedElements(element: HTMLElement): void {
-        const unwantedSelectors = [
-            'script',
-            'style',
-            'noscript',
-            'iframe',
-            'img[width="1"]',
-            'img[height="1"]',
-            '.adL',
-            '.yj6qo',
-        ];
-
-        unwantedSelectors.forEach(selector => {
+        this.UNWANTED_SELECTORS.forEach(selector => {
             element.querySelectorAll(selector).forEach(el => el.remove());
         });
     }
 
-    private static processElements(element: HTMLElement): void {
-        const blockElements = element.querySelectorAll(
-            'p, div, br, h1, h2, h3, h4, h5, h6, li, tr'
-        );
-
-        blockElements.forEach(el => {
+    private static processBlockElements(element: HTMLElement): void {
+        element.querySelectorAll(this.BLOCK_ELEMENTS).forEach(el => {
             if (el.tagName === 'BR') {
                 el.replaceWith('\n');
             } else if (el.tagName === 'LI') {
-                const text = document.createTextNode('\n• ');
-                el.prepend(text);
+                el.prepend(document.createTextNode('\n• '));
             } else {
                 el.append(document.createTextNode('\n'));
             }
         });
+    }
 
+    private static processLinks(element: HTMLElement): void {
         element.querySelectorAll('a').forEach(link => {
             const href = link.getAttribute('href');
             const text = link.textContent;
@@ -320,21 +311,22 @@ export class HtmlSanitizer {
         });
     }
 
-    private static cleanupText(text: string): string {
-        return text
-            .replace(/&nbsp;/g, ' ')
-            .replace(/&amp;/g, '&')
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/&quot;/g, '"')
-            .replace(/&#39;/g, "'")
-            .replace(/[ \t]+/g, ' ')
-            .replace(/\n\s+\n/g, '\n\n')
-            .replace(/\n{3,}/g, '\n\n')
-            .split('\n')
-            .map(line => line.trim())
-            .join('\n')
-            .trim();
+    private static extractText(element: HTMLElement): string {
+        return element.textContent || element.innerText || '';
+    }
+
+    static htmlToText(html: string): string {
+        if (!html) return '';
+
+        const temp = document.createElement('div');
+        temp.innerHTML = html;
+
+        this.removeUnwantedElements(temp);
+        this.processBlockElements(temp);
+        this.processLinks(temp);
+
+        const text = this.extractText(temp);
+        return normalizeWhitespace(decodeHtmlEntities(text), true);
     }
 
     static htmlToPlainText(html: string): string {
@@ -345,11 +337,7 @@ export class HtmlSanitizer {
 
         this.removeUnwantedElements(temp);
 
-        let text = temp.textContent || temp.innerText || '';
-
-        return text
-            .replace(/&nbsp;/g, ' ')
-            .replace(/\s+/g, ' ')
-            .trim();
+        const text = this.extractText(temp);
+        return normalizeWhitespace(decodeHtmlEntities(text), false);
     }
 }
