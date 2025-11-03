@@ -3,7 +3,7 @@ import type { EmailData, FetchResult, ProcessResult } from '../../shared/types';
 import { sendChromeMessage, getErrorMessage } from '../../shared/utils';
 import {
     cacheEmailData,
-    getCachedEmailData,
+    getCurrentCachedEmail,
     clearAllEmailCaches
 } from '../../shared/storage';
 
@@ -27,7 +27,7 @@ export function useMail() {
 
                 setCurrentUrl(tab.url);
 
-                const cached = await getCachedEmailData(tab.url);
+                const cached = await getCurrentCachedEmail();
                 if (cached) {
                     console.log('[useMail] Restored from cache');
                     setEmailData(cached);
@@ -86,26 +86,28 @@ export function useMail() {
                 console.log('[useMail] Fetching email from', domain);
 
                 const effectiveUrl = url || currentUrl;
-                if (effectiveUrl) {
-                    const cached = await getCachedEmailData(effectiveUrl);
-                    if (cached && cached.attachments.length > 0) {
-                        console.log('[useMail] Using cached data');
-                        setEmailData(cached);
-                        setLoading(false);
-                        return true;
-                    }
-                }
+
 
                 const result = await fetchMailWithRetry(tabId, domain);
 
                 if (result.success && result.emailData) {
-                    setEmailData(result.emailData);
 
-                    if (effectiveUrl) {
-                        await cacheEmailData(effectiveUrl, result.emailData);
+                    const cached = await getCurrentCachedEmail();
+
+                    if (cached && cached.id === result.emailData.id && cached.attachments.length > 0) {
+                        console.log('[useMail] Same email, using cached attachments');
+                        setEmailData(cached);
+                    } else {
+                        console.log('[useMail] New email or no cache, using fresh data');
+                        setEmailData(result.emailData);
+
+                        if (effectiveUrl) {
+                            await cacheEmailData(effectiveUrl, result.emailData);
+                        }
                     }
 
                     console.log('[useMail] Email fetched:', {
+                        id: result.emailData.id,
                         subject: result.emailData.subject,
                         attachments: result.emailData.attachments.length
                     });

@@ -83,6 +83,10 @@ interface CachedEmail {
 }
 
 function generateCacheKey(url: string, emailId?: string): string {
+    if (emailId) {
+        return emailId;
+    }
+
     try {
         const urlObj = new URL(url);
         const pathname = urlObj.pathname;
@@ -100,10 +104,8 @@ function generateCacheKey(url: string, emailId?: string): string {
             if (itemMatch) {
                 return `outlook_${itemMatch[1]}`;
             }
-        }
 
-        if (emailId) {
-            return emailId;
+            return `owa_current_${Date.now()}`;
         }
 
         return `email_${hashString(url)}`;
@@ -127,13 +129,12 @@ function getFullCacheKey(cacheKey: string): string {
 }
 
 export async function cacheEmailData(url: string, emailData: EmailData): Promise<void> {
-    // Don't cache if no attachments
     if (emailData.attachments.length === 0) {
         console.log('[EmailCache] Skipping cache - no attachments');
         return;
     }
 
-    const cacheKey = generateCacheKey(url, emailData.id);
+    const cacheKey = emailData.id;
     const cacheData: CachedEmail = {
         emailData,
         timestamp: Date.now(),
@@ -148,9 +149,9 @@ export async function cacheEmailData(url: string, emailData: EmailData): Promise
     console.log('[EmailCache] Cached email:', cacheKey, 'with', emailData.attachments.length, 'attachments');
 }
 
-export async function getCachedEmailData(url: string): Promise<EmailData | null> {
+export async function getCachedEmailData(url: string, currentEmailId?: string): Promise<EmailData | null> {
     try {
-        const cacheKey = generateCacheKey(url);
+        const cacheKey = currentEmailId || generateCacheKey(url);
         const fullKey = getFullCacheKey(cacheKey);
         const result = await storageGet<Record<string, CachedEmail>>([fullKey]);
         const cached = result[fullKey];
@@ -160,7 +161,6 @@ export async function getCachedEmailData(url: string): Promise<EmailData | null>
             return null;
         }
 
-        // Check if cache is still valid
         const age = Date.now() - cached.timestamp;
         if (age > MAX_CACHE_AGE) {
             console.log('[EmailCache] Cache expired:', cacheKey, 'age:', Math.floor(age / 1000), 's');
@@ -168,17 +168,18 @@ export async function getCachedEmailData(url: string): Promise<EmailData | null>
             return null;
         }
 
-        // CRITICAL: Check if cached URL matches current URL  
-        // Extract email ID from both URLs to compare
-        const cachedEmailId = generateCacheKey(cached.url);
-        const currentEmailId = generateCacheKey(url);
+        const isOwaStatic = url.includes('outlook') && !url.includes('/id/');
 
-        if (cachedEmailId !== currentEmailId) {
-            console.log('[EmailCache] Email ID mismatch - cached:', cachedEmailId, 'current:', currentEmailId);
-            return null;
+        if (!isOwaStatic) {
+            const cachedEmailId = generateCacheKey(cached.url);
+            const currentUrlId = generateCacheKey(url);
+
+            if (cachedEmailId !== currentUrlId) {
+                console.log('[EmailCache] Email ID mismatch - cached:', cachedEmailId, 'current:', currentUrlId);
+                return null;
+            }
         }
 
-        // Don't return cache with 0 attachments
         if (cached.emailData.attachments.length === 0) {
             console.log('[EmailCache] Cache has 0 attachments, ignoring');
             return null;
@@ -206,12 +207,51 @@ export function getCurrentEmailId(url: string): string | null {
     return generateCacheKey(url);
 }
 
-export async function isSameEmail(url: string): Promise<boolean> {
+export async function isSameEmail(emailId: string): Promise<boolean> {
     const result = await storageGet<{ [CACHE_CURRENT_KEY]?: string }>([CACHE_CURRENT_KEY]);
     const currentKey = result[CACHE_CURRENT_KEY];
 
     if (!currentKey) return false;
 
-    const newKey = generateCacheKey(url);
-    return currentKey === newKey;
+    return currentKey === emailId;
+}
+
+export async function getCurrentCachedEmail(): Promise<EmailData | null> {
+    try {
+        const result = await storageGet<{ [CACHE_CURRENT_KEY]?: string }>([CACHE_CURRENT_KEY]);
+        const currentKey = result[CACHE_CURRENT_KEY];
+
+        if (!currentKey) {
+            console.log('[EmailCache] No current email key');
+            return null;
+        }
+
+        const fullKey = getFullCacheKey(currentKey);
+        const cacheResult = await storageGet<Record<string, CachedEmail>>([fullKey]);
+        const cached = cacheResult[fullKey];
+
+        if (!cached) {
+            console.log('[EmailCache] No cached data for current key');
+            return null;
+        }
+
+        // Check age
+        const age = Date.now() - cached.timestamp;
+        if (age > MAX_CACHE_AGE) {
+            console.log('[EmailCache] Current cache expired');
+            await clearEmailCache(currentKey);
+            return null;
+        }
+
+        if (cached.emailData.attachments.length === 0) {
+            console.log('[EmailCache] Current cache has no attachments');
+            return null;
+        }
+
+        console.log('[EmailCache] Retrieved current cached email:', currentKey);
+        return cached.emailData;
+    } catch (error) {
+        console.error('[EmailCache] Error getting current cached email:', error);
+        return null;
+    }
 }

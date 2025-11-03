@@ -222,7 +222,7 @@ async function handleFetchMail(
                 clearTimeout(messageTimeout);
 
                 if (chrome.runtime.lastError) {
-                    console.error('[Background] Chrome error:', chrome.runtime.lastError);
+                    console.error('[Background] Chrome error:', chrome.runtime.lastError?.message);
                     const errorMsg = getChromeErrorMessage(chrome.runtime.lastError);
                     sendResponse({ success: false, error: errorMsg });
                     return;

@@ -50,45 +50,96 @@ export abstract class MailFetcher {
     ): Promise<Attachment[]> {
         console.log(`[AttachmentFetcher] Processing ${elements.length} elements`);
 
-        const processedUrls = new Set<string>();
+        if (elements.length === 0) {
+            console.log('[AttachmentFetcher] No elements to process');
+            return [];
+        }
 
-        const attachmentPromises = elements.map(async (element) => {
+        const processedUrls = new Set<string>();
+        const results: (Attachment | null)[] = [];
+
+        for (let i = 0; i < elements.length; i++) {
+            const element = elements[i];
+            console.log(`[AttachmentFetcher] Processing element ${i + 1}/${elements.length}`);
+
             try {
                 const [url, name] = this.getSourceUrlAndName(element);
 
-                if (!url || processedUrls.has(url)) {
-                    return null;
+                if (!url) {
+                    console.warn(`[AttachmentFetcher] Element ${i + 1}: No URL found, skipping`);
+                    results.push(null);
+                    continue;
+                }
+
+                if (processedUrls.has(url)) {
+                    console.log(`[AttachmentFetcher] Element ${i + 1}: Duplicate URL, skipping:`, url.substring(0, 100));
+                    results.push(null);
+                    continue;
                 }
 
                 processedUrls.add(url);
+                console.log(`[AttachmentFetcher] Element ${i + 1}: Attempting to fetch:`, {
+                    name,
+                    url: url.substring(0, 100) + (url.length > 100 ? '...' : '')
+                });
 
-                const blob = await this.fetchAsBlob(url);
-                if (!blob) return null;
+                try {
+                    const blob = await this.fetchAsBlob(url);
+                    if (!blob) {
+                        console.warn(`[AttachmentFetcher] Element ${i + 1}: Failed to fetch blob`);
+                        results.push(null);
+                        continue;
+                    }
 
-                const mimeType = blob.type || element.getAttribute('type') || '';
-                const type = FileUtils.detectFileType(name, mimeType);
-                const id = FileUtils.generateId();
-                const base64Data = await this.blobToBase64(blob);
-
-                return {
-                    id,
-                    name: FileUtils.sanitizeFilename(name),
-                    type,
-                    base64Data,
-                    metadata: {
+                    console.log(`[AttachmentFetcher] Element ${i + 1}: Blob fetched successfully:`, {
                         size: blob.size,
-                        mimeType,
-                        sourceUrl: url,
-                    },
-                } satisfies Attachment;
-            } catch (error) {
-                console.error('[AttachmentFetcher] Error processing element:', error);
-                return null;
-            }
-        });
+                        type: blob.type
+                    });
 
-        const results = await Promise.all(attachmentPromises);
-        return results.filter(Boolean) as Attachment[];
+                    const mimeType = blob.type || element.getAttribute('type') || '';
+                    const type = FileUtils.detectFileType(name, mimeType);
+                    const id = FileUtils.generateId();
+
+                    console.log(`[AttachmentFetcher] Element ${i + 1}: Converting to base64...`);
+                    const base64Data = await this.blobToBase64(blob);
+
+                    const attachment: Attachment = {
+                        id,
+                        name: FileUtils.sanitizeFilename(name),
+                        type,
+                        base64Data,
+                        metadata: {
+                            size: blob.size,
+                            mimeType,
+                            sourceUrl: url,
+                        },
+                    };
+
+                    console.log(`[AttachmentFetcher] Element ${i + 1}: Successfully processed attachment:`, {
+                        id,
+                        name: attachment.name,
+                        type,
+                        size: blob.size
+                    });
+
+                    results.push(attachment);
+                } catch (fetchError) {
+                    console.error(`[AttachmentFetcher] Element ${i + 1}: Error fetching/processing:`, {
+                        error: fetchError instanceof Error ? fetchError.message : String(fetchError),
+                        url: url.substring(0, 100)
+                    });
+                    results.push(null);
+                }
+            } catch (error) {
+                console.error(`[AttachmentFetcher] Element ${i + 1}: Error in processing:`, error);
+                results.push(null);
+            }
+        }
+
+        const attachments = results.filter((a): a is Attachment => a !== null);
+        console.log(`[AttachmentFetcher] Successfully processed ${attachments.length}/${elements.length} attachments`);
+
+        return attachments;
     }
 
     protected getSourceUrlAndName(element: HTMLElement): [string, string] {

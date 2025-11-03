@@ -1,5 +1,6 @@
 import { FileType } from './types';
 import { FILE_TYPE_MAP, SUPPORTED_DOMAINS, TOKEN_REFRESH_BUFFER } from './constants';
+import type { SupportedDomain } from './constants';
 
 // ======================== COMMON HELPERS ========================
 function decodeHtmlEntities(text: string): string {
@@ -90,43 +91,63 @@ export class FileUtils {
 }
 
 // ======================== DOMAIN UTILITIES ========================
-const DOMAIN_PATTERNS = {
-    gmail: ['mail.google.com', 'gmail.com'],
-    outlook: ['outlook.live.com', 'outlook.office.com', 'outlook.office365.com', 'mail.outlook.com'],
-};
+const OUTLOOK_LIVE_HOST = 'outlook.live.com';
 
-function matchesDomainPattern(hostname: string, patterns: string[]): boolean {
-    return patterns.some(pattern =>
-        hostname === pattern ||
-        hostname.endsWith('.' + pattern) ||
-        hostname.includes(pattern)
-    );
+function normalizeHostname(domain: string): string {
+    if (!domain) return '';
+
+    try {
+        const url = new URL(domain.startsWith('http') ? domain : `https://${domain}`);
+        return url.hostname.toLowerCase();
+    } catch {
+        return domain.split('/')[0].toLowerCase();
+    }
+}
+
+function isGmailDomain(hostname: string): boolean {
+    return hostname.includes('google') || hostname.includes('gmail');
+}
+
+function isOutlookLiveDomain(hostname: string): boolean {
+    return hostname === OUTLOOK_LIVE_HOST || hostname.endsWith(`.${OUTLOOK_LIVE_HOST}`);
+}
+
+function isOutlookOwaDomain(hostname: string): boolean {
+    if (isOutlookLiveDomain(hostname)) {
+        return false;
+    }
+
+    return hostname.startsWith('outlook.') ||
+        hostname.includes('office365') ||
+        hostname.includes('office.com');
 }
 
 export function extractDomain(url: string): string {
-    try {
-        return new URL(url).hostname;
-    } catch {
-        return '';
-    }
+    return normalizeHostname(url);
 }
 
 export function isDomainSupported(domain: string): boolean {
-    if (!domain) return false;
-    const hostname = domain.toLowerCase();
-    const allPatterns = [...DOMAIN_PATTERNS.gmail, ...DOMAIN_PATTERNS.outlook];
-    return matchesDomainPattern(hostname, allPatterns);
+    const hostname = normalizeHostname(domain);
+    if (!hostname) return false;
+
+    return isGmailDomain(hostname) ||
+        isOutlookLiveDomain(hostname) ||
+        isOutlookOwaDomain(hostname);
 }
 
-export function getDomainType(domain: string): string {
-    const hostname = domain.toLowerCase();
+export function getDomainType(domain: string): SupportedDomain | 'unknown' {
+    const hostname = normalizeHostname(domain);
 
-    if (matchesDomainPattern(hostname, DOMAIN_PATTERNS.gmail)) {
+    if (isGmailDomain(hostname)) {
         return SUPPORTED_DOMAINS.GMAIL;
     }
 
-    if (matchesDomainPattern(hostname, DOMAIN_PATTERNS.outlook)) {
-        return SUPPORTED_DOMAINS.OUTLOOK;
+    if (isOutlookLiveDomain(hostname)) {
+        return SUPPORTED_DOMAINS.OUTLOOK_LIVE;
+    }
+
+    if (isOutlookOwaDomain(hostname)) {
+        return SUPPORTED_DOMAINS.OUTLOOK_OWA;
     }
 
     return 'unknown';

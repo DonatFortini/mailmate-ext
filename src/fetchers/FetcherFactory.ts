@@ -1,14 +1,12 @@
 import { SUPPORTED_DOMAINS, type SupportedDomain } from "../shared/constants";
 import type { MailFetcher } from "./MailFetcher";
 import { GmailFetcher } from "./GmailFetcher";
-import { OutlookFetcher } from "./OutlookFetcher";
+import { OutlookLiveFetcher } from "./OutlookLiveFetcher";
+import { OutlookOWAFetcher } from "./OutlookOWAFetcher";
 
 export class FetcherFactory {
     private static fetcherInstances = new Map<SupportedDomain, MailFetcher>();
 
-    /**
-     * Create or get cached fetcher for domain
-     */
     static getFetcher(domain: string): MailFetcher {
         const normalizedDomain = this.normalizeDomain(domain);
 
@@ -27,64 +25,81 @@ export class FetcherFactory {
         return fetcher;
     }
 
-    /**
-     * Create fetcher instance based on domain
-     */
     private static createFetcher(domain: SupportedDomain): MailFetcher {
         switch (domain) {
             case SUPPORTED_DOMAINS.GMAIL:
                 return new GmailFetcher();
-
-            case SUPPORTED_DOMAINS.OUTLOOK:
-                return new OutlookFetcher();
-
+            case SUPPORTED_DOMAINS.OUTLOOK_LIVE:
+                return new OutlookLiveFetcher();
+            case SUPPORTED_DOMAINS.OUTLOOK_OWA:
+                return new OutlookOWAFetcher();
             default:
                 throw new Error(`No fetcher implementation for: ${domain}`);
         }
     }
 
-    /**
-     * Normalize domain to supported domain constant
-     */
     private static normalizeDomain(domain: string): SupportedDomain | null {
-        const hostname = domain.toLowerCase();
-        if (hostname.includes('google') || hostname.includes('gmail')) {
+        const hostname = this.extractHostname(domain);
+
+        if (this.isGmailDomain(hostname)) {
             return SUPPORTED_DOMAINS.GMAIL;
         }
-        if (hostname.includes('outlook') ||
-            hostname.includes('office365') ||
-            hostname.includes('office.com')) {
-            return SUPPORTED_DOMAINS.OUTLOOK;
+
+        if (this.isOutlookLiveDomain(hostname)) {
+            return SUPPORTED_DOMAINS.OUTLOOK_LIVE;
+        }
+
+        if (this.isOutlookOwaDomain(hostname)) {
+            return SUPPORTED_DOMAINS.OUTLOOK_OWA;
         }
 
         return null;
     }
 
-    /**
-     * Check if domain is supported
-     */
+    private static extractHostname(domain: string): string {
+        if (!domain) {
+            return '';
+        }
+
+        try {
+            const url = new URL(domain.startsWith('http') ? domain : `https://${domain}`);
+            return url.hostname.toLowerCase();
+        } catch {
+            return domain.split('/')[0].toLowerCase();
+        }
+    }
+
+    private static isGmailDomain(hostname: string): boolean {
+        return hostname.includes('google') || hostname.includes('gmail');
+    }
+
+    private static isOutlookLiveDomain(hostname: string): boolean {
+        return hostname === 'outlook.live.com' || hostname.endsWith('.outlook.live.com');
+    }
+
+    private static isOutlookOwaDomain(hostname: string): boolean {
+        if (this.isOutlookLiveDomain(hostname)) {
+            return false;
+        }
+
+        return hostname.startsWith('outlook.') ||
+            hostname.includes('office365') ||
+            hostname.includes('office.com');
+    }
+
     static isSupported(domain: string): boolean {
         return this.normalizeDomain(domain) !== null;
     }
 
-    /**
-     * Get supported domain type
-     */
     static getDomainType(domain: string): SupportedDomain | null {
         return this.normalizeDomain(domain);
     }
 
-    /**
-     * Clear all cached fetchers
-     */
     static clearCache(): void {
         this.fetcherInstances.clear();
         console.log('[FetcherFactory] Cache cleared');
     }
 
-    /**
-     * Clear specific fetcher cache
-     */
     static clearFetcher(domain: string): void {
         const normalizedDomain = this.normalizeDomain(domain);
         if (normalizedDomain && this.fetcherInstances.has(normalizedDomain)) {
