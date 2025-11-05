@@ -425,6 +425,115 @@ export abstract class OutlookFetcherBase extends MailFetcher {
         const navigationTerms = ['Boîte de réception', 'Brouillons', 'Courrier indésirable', 'Éléments envoyés', 'Éléments supprimés', 'Archive', 'Historique'];
         return !navigationTerms.some(term => text.includes(term));
     }
+
+    protected shouldSkipAttachmentCandidate(element: HTMLElement, url: string, name: string): boolean {
+        return this.isLikelyInlineAttachment(element, url, name);
+    }
+
+    private isLikelyInlineAttachment(element: HTMLElement, url: string, name: string): boolean {
+        const lowerUrl = (url || '').toLowerCase();
+        const lowerName = (name || '').toLowerCase();
+
+        if (lowerUrl.startsWith('cid:') || lowerUrl.startsWith('data:')) {
+            return true;
+        }
+
+        const inlineUrlTokens = ['isinline=1', 'isinline=true', 'inline=1', 'inline=true', 'displayas=inline'];
+        if (inlineUrlTokens.some(token => lowerUrl.includes(token))) {
+            return true;
+        }
+
+        const inlineAttrSelectors = [
+            '[data-inline="true"]',
+            '[data-is-inline="true"]',
+            '[data-inline-attachment="true"]',
+            '[data-is-inline-attachment="true"]',
+            '[data-isinlineattachment="true"]',
+            '[data-isinline="true"]',
+            '[class*="inlineattachment" i]',
+            '[class*="inline-image" i]',
+            '[class*="signatureimage" i]'
+        ];
+
+        if (inlineAttrSelectors.some(selector => {
+            try {
+                return element.matches(selector) || Boolean(element.closest(selector));
+            } catch {
+                return false;
+            }
+        })) {
+            return true;
+        }
+
+        const inlineAttributes = [
+            'data-inline',
+            'data-is-inline',
+            'data-inline-attachment',
+            'data-is-inline-attachment',
+            'data-isinlineattachment',
+            'data-isinline',
+            'data-inlineimage'
+        ];
+
+        if (inlineAttributes.some(attr => element.getAttribute(attr)?.toLowerCase() === 'true')) {
+            return true;
+        }
+
+        const ariaLabel = (element.getAttribute('aria-label') || '').toLowerCase();
+        const title = (element.getAttribute('title') || '').toLowerCase();
+        const text = (element.textContent || '').toLowerCase();
+        const className = (element.getAttribute('class') || '').toLowerCase();
+
+        const inlineTextIndicators = [
+            'inline image',
+            'inline picture',
+            'image intégrée',
+            'image incorporée',
+            'image inline',
+            'signature'
+        ];
+
+        if (inlineTextIndicators.some(indicator =>
+            ariaLabel.includes(indicator) ||
+            title.includes(indicator) ||
+            className.includes(indicator)
+        )) {
+            return true;
+        }
+
+        const inlineNamePatterns = [
+            /^image0+\d+\.(png|jpe?g|gif|bmp|svg)$/,
+            /^image\d{3,}\.(png|jpe?g|gif|bmp|svg)$/,
+            /^cidimage\d*\.(png|jpe?g|gif|bmp|svg)$/
+        ];
+
+        if (inlineNamePatterns.some(pattern => pattern.test(lowerName))) {
+            return true;
+        }
+
+        if (/\.(png|jpe?g|gif|bmp|svg)$/.test(lowerName)) {
+            const signatureKeywords = ['signature', 'logo', 'badge', 'linkedin', 'facebook', 'instagram', 'twitter', 'youtube', 'whatsapp'];
+            const hasSignatureKeyword = signatureKeywords.some(keyword => lowerName.includes(keyword));
+
+            if (hasSignatureKeyword && (className.includes('signature') || ariaLabel.includes('signature') || title.includes('signature'))) {
+                return true;
+            }
+
+            if (hasSignatureKeyword && !text.match(/\d+\s*(ko|mo|kb|mb|go|gb)/i)) {
+                return true;
+            }
+        }
+
+        if (!element.closest('[data-app-section="AttachmentWell"], [data-automation-id="AttachmentWell"], [data-automation-id="AttachmentList"], div.attachmentWell, div[role="list"][aria-label*="ttachment" i]')) {
+            const hasInlineHints = inlineTextIndicators.some(indicator => text.includes(indicator));
+            if (hasInlineHints) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     protected getSourceUrlAndName(element: HTMLElement): [string, string] {
 
         if (element.tagName === 'A' && element.className.includes('_ay_I')) {

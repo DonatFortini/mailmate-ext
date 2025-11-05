@@ -14,6 +14,7 @@ export interface AttachmentMetadata {
     mimeType?: string;
     sourceUrl?: string;
     downloadedAt?: number;
+    inline?: boolean;
 }
 
 export type AttachmentStatus = 'pending' | 'processing' | 'ready' | 'error';

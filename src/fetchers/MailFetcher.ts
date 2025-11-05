@@ -48,8 +48,7 @@ export abstract class MailFetcher {
         const processedUrls = new Set<string>();
         const attachments: Attachment[] = [];
 
-        for (let i = 0; i < elements.length; i++) {
-            const element = elements[i];
+        for (const element of elements) {
 
             try {
                 const [url, name] = this.getSourceUrlAndName(element);
@@ -66,16 +65,26 @@ export abstract class MailFetcher {
 
                 const elementMimeType = element.getAttribute('type') || element.getAttribute('data-mime-type') || '';
 
+                if (this.shouldSkipAttachmentCandidate(element, url, sanitizedName)) {
+                    continue;
+                }
+
+                const metadata = this.buildAttachmentMetadata(
+                    element,
+                    {
+                        sourceUrl: url,
+                        mimeType: elementMimeType || undefined,
+                    },
+                    sanitizedName
+                );
+
                 const attachment: Attachment = {
                     id,
                     name: sanitizedName,
                     type,
                     status: 'pending',
                     base64Data: undefined,
-                    metadata: {
-                        sourceUrl: url,
-                        mimeType: elementMimeType || undefined,
-                    },
+                    metadata,
                 };
 
                 attachments.push(attachment);
@@ -170,6 +179,18 @@ export abstract class MailFetcher {
             ...attachment,
             metadata: { ...attachment.metadata },
         };
+    }
+
+    protected shouldSkipAttachmentCandidate(_element: HTMLElement, _url: string, _name: string): boolean {
+        return false;
+    }
+
+    protected buildAttachmentMetadata(
+        _element: HTMLElement,
+        baseMetadata: Attachment['metadata'],
+        _name: string
+    ): Attachment['metadata'] {
+        return baseMetadata;
     }
 
     protected getSourceUrlAndName(element: HTMLElement): [string, string] {
