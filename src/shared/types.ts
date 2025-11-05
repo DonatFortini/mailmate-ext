@@ -13,14 +13,19 @@ export interface AttachmentMetadata {
     size?: number;
     mimeType?: string;
     sourceUrl?: string;
+    downloadedAt?: number;
 }
+
+export type AttachmentStatus = 'pending' | 'processing' | 'ready' | 'error';
 
 export interface Attachment {
     id: string;
     name: string;
     type: FileType;
-    base64Data: string;
+    base64Data?: string;
+    status: AttachmentStatus;
     metadata: AttachmentMetadata;
+    error?: string;
 }
 
 export interface EmailData {
@@ -56,6 +61,7 @@ export interface AuthResult {
 
 export type MessageAction =
     | 'FETCH_MAIL'
+    | 'FETCH_ATTACHMENT_CONTENT'
     | 'PROCESS_MAIL'
     | 'LOGIN'
     | 'LOGOUT'
@@ -72,6 +78,13 @@ export interface FetchMailMessage extends BaseMessage {
     domain: string;
 }
 
+export interface FetchAttachmentContentMessage extends BaseMessage {
+    action: 'FETCH_ATTACHMENT_CONTENT';
+    tabId: number;
+    domain: string;
+    attachmentId: string;
+}
+
 export interface ProcessMailMessage extends BaseMessage {
     action: 'PROCESS_MAIL';
     emailData: EmailData;
@@ -85,6 +98,7 @@ export interface LoginMessage extends BaseMessage {
 
 export type Message =
     | FetchMailMessage
+    | FetchAttachmentContentMessage
     | ProcessMailMessage
     | LoginMessage
     | BaseMessage;
@@ -99,5 +113,11 @@ export interface FetchResult {
 export interface ProcessResult {
     success: boolean;
     data?: any;
+    error?: string;
+}
+
+export interface FetchAttachmentContentResult {
+    success: boolean;
+    attachment?: Attachment;
     error?: string;
 }

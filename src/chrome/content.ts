@@ -1,4 +1,9 @@
-import type { FetchResult, MessageAction, EmailData } from '../shared/types';
+import type {
+    FetchResult,
+    MessageAction,
+    EmailData,
+    FetchAttachmentContentResult
+} from '../shared/types';
 import { debounce } from '../shared/utils';
 import { FetcherFactory } from '../fetchers/FetcherFactory';
 
@@ -11,6 +16,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         }, 100);
 
         debouncedHandler();
+        return true;
+    }
+
+    if (message.action === 'FETCH_ATTACHMENT_CONTENT') {
+        handleFetchAttachmentContent(message, sendResponse);
         return true;
     }
 
@@ -55,6 +65,41 @@ async function handleFetchMail(
         sendResponse({
             success: false,
             error: error instanceof Error ? error.message : 'Failed to fetch email',
+        });
+    }
+}
+
+async function handleFetchAttachmentContent(
+    message: { action: MessageAction; domain: string; attachmentId: string },
+    sendResponse: (response: FetchAttachmentContentResult) => void
+): Promise<void> {
+    try {
+        if (!message.domain) {
+            throw new Error('Domain is required');
+        }
+
+        if (!message.attachmentId) {
+            throw new Error('Attachment ID is required');
+        }
+
+        if (!FetcherFactory.isSupported(message.domain)) {
+            throw new Error(`Unsupported domain: ${message.domain}`);
+        }
+
+        const fetcher = FetcherFactory.getFetcher(message.domain);
+        const attachment = await fetcher.loadAttachmentContent(message.attachmentId);
+
+        sendResponse({
+            success: attachment.status === 'ready',
+            attachment,
+            error: attachment.status === 'error' ? attachment.error : undefined,
+        });
+    } catch (error) {
+        console.error('[Content] Error fetching attachment content:', error);
+
+        sendResponse({
+            success: false,
+            error: error instanceof Error ? error.message : 'Failed to fetch attachment',
         });
     }
 }

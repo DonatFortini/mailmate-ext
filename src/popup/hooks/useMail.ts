@@ -1,5 +1,11 @@
-import { useState, useCallback, useEffect } from 'react';
-import type { EmailData, FetchResult, ProcessResult } from '../../shared/types';
+import { useState, useCallback, useEffect, useMemo } from 'react';
+import type {
+    EmailData,
+    FetchResult,
+    ProcessResult,
+    Attachment,
+    FetchAttachmentContentResult
+} from '../../shared/types';
 import { sendChromeMessage, getErrorMessage } from '../../shared/utils';
 import {
     cacheEmailData,
@@ -17,6 +23,7 @@ export function useMail() {
     const [error, setError] = useState<string>('');
     const [processing, setProcessing] = useState(false);
     const [currentUrl, setCurrentUrl] = useState<string>('');
+    const [attachmentsLoading, setAttachmentsLoading] = useState(false);
 
     useEffect(() => {
         async function loadCachedData() {
@@ -32,6 +39,7 @@ export function useMail() {
                 if (cached) {
                     console.log('[useMail] Restored from cache');
                     setEmailData(cached);
+                    setAttachmentsLoading(false);
                 }
             } catch (err) {
                 console.error('[useMail] Error loading cache:', err);
@@ -78,11 +86,98 @@ export function useMail() {
         }
     };
 
+    const loadAttachmentsContent = useCallback(
+        async (tabId: number, domain: string, email: EmailData, effectiveUrl?: string): Promise<void> => {
+            if (email.attachments.length === 0) {
+                setAttachmentsLoading(false);
+                return;
+            }
+
+            if (email.attachments.every(att => att.status === 'ready')) {
+                setAttachmentsLoading(false);
+                return;
+            }
+
+            console.log('[useMail] Loading attachment content asynchronously');
+            setAttachmentsLoading(true);
+
+            let latestEmailData: EmailData = email;
+            let encounteredError: string | null = null;
+
+            setEmailData(latestEmailData);
+
+            const applyAttachment = (attachment: Attachment) => {
+                const exists = latestEmailData.attachments.some(att => att.id === attachment.id);
+                if (!exists) {
+                    return;
+                }
+
+                latestEmailData = {
+                    ...latestEmailData,
+                    attachments: latestEmailData.attachments.map(att =>
+                        att.id === attachment.id ? attachment : att
+                    ),
+                };
+                setEmailData(latestEmailData);
+            };
+
+            for (const attachment of email.attachments) {
+                applyAttachment({
+                    ...attachment,
+                    status: 'processing',
+                    error: undefined,
+                });
+
+                try {
+                    const result = await sendChromeMessage<FetchAttachmentContentResult>({
+                        action: 'FETCH_ATTACHMENT_CONTENT',
+                        tabId,
+                        domain,
+                        attachmentId: attachment.id,
+                    });
+
+                    if (result.attachment) {
+                        applyAttachment(result.attachment);
+                    }
+
+                    if (!result.success) {
+                        encounteredError = result.error || encounteredError;
+                    }
+                } catch (err) {
+                    const errorMessage = getErrorMessage(err, 'Erreur lors du chargement des pièces jointes');
+                    encounteredError = errorMessage;
+
+                    applyAttachment({
+                        ...attachment,
+                        status: 'error',
+                        base64Data: undefined,
+                        error: errorMessage,
+                    });
+                }
+            }
+
+            const finalEmailData = latestEmailData;
+            const allReady = finalEmailData.attachments.every(att => att.status === 'ready');
+
+            if (allReady && effectiveUrl) {
+                await cacheEmailData(effectiveUrl, finalEmailData);
+            }
+
+            if (encounteredError) {
+                setError(encounteredError);
+            }
+
+            setAttachmentsLoading(false);
+        },
+        []
+    );
+
     const fetchMail = useCallback(
         async (tabId: number, domain: string, url?: string): Promise<boolean> => {
             try {
                 setLoading(true);
                 setError('');
+                setAttachmentsLoading(false);
 
                 console.log('[useMail] Fetching email from', domain);
 
@@ -98,13 +193,11 @@ export function useMail() {
                     if (cached && cached.id === result.emailData.id && cached.attachments.length > 0) {
                         console.log('[useMail] Same email, using cached attachments');
                         setEmailData(cached);
+                        setAttachmentsLoading(false);
                     } else {
                         console.log('[useMail] New email or no cache, using fresh data');
                         setEmailData(result.emailData);
-
-                        if (effectiveUrl) {
-                            await cacheEmailData(effectiveUrl, result.emailData);
-                        }
+                        await loadAttachmentsContent(tabId, domain, result.emailData, effectiveUrl);
                     }
 
                     console.log('[useMail] Email fetched:', {
@@ -128,7 +221,7 @@ export function useMail() {
                 setLoading(false);
             }
         },
-        [currentUrl]
+        [currentUrl, loadAttachmentsContent]
     );
 
     const processMail = useCallback(
@@ -171,7 +264,14 @@ export function useMail() {
     const clearMail = useCallback(() => {
         setEmailData(null);
         setError('');
+        setAttachmentsLoading(false);
     }, []);
+
+    const attachmentsReady = useMemo(() => {
+        if (!emailData) return true;
+        if (emailData.attachments.length === 0) return true;
+        return emailData.attachments.every(att => att.status === 'ready');
+    }, [emailData]);
 
     return {
         emailData,
@@ -179,6 +279,8 @@ export function useMail() {
         loading,
         error,
         processing,
+        attachmentsLoading,
+        attachmentsReady,
         fetchMail,
         processMail,
         clearMail,

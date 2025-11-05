@@ -160,6 +160,11 @@ export async function cacheEmailData(url: string, emailData: EmailData): Promise
         return;
     }
 
+    if (!emailData.attachments.every(att => att.status === 'ready')) {
+        console.log('[EmailCache] Skipping cache - attachments not ready');
+        return;
+    }
+
     const cacheKey = emailData.id;
     const cacheData: CachedEmail = {
         emailData,
@@ -211,6 +216,11 @@ export async function getCachedEmailData(url: string, currentEmailId?: string): 
 
         if (cached.emailData.attachments.length === 0) {
             console.log('[EmailCache] Cache has 0 attachments, ignoring');
+            return null;
+        }
+
+        if (!cached.emailData.attachments.every(att => att.status === 'ready')) {
+            console.log('[EmailCache] Cached attachments not ready, ignoring');
             return null;
         }
 

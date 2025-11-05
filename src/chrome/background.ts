@@ -6,6 +6,8 @@ import type {
     ProcessResult,
     EmailData,
     FetchMailMessage,
+    FetchAttachmentContentMessage,
+    FetchAttachmentContentResult,
     ProcessMailMessage,
     LoginMessage,
 } from '../shared/types';
@@ -165,14 +167,22 @@ async function sendEmailToApi(emailData: EmailData): Promise<any> {
         attachmentsCount: emailData.attachments.length,
     });
 
+    const readyAttachments = emailData.attachments.filter(
+        (att) => att.status === 'ready' && att.base64Data
+    );
+
+    if (readyAttachments.length !== emailData.attachments.length) {
+        console.warn('[Background] Some attachments are not ready and will be skipped');
+    }
+
     const payload = {
         id: emailData.id,
         subject: emailData.subject,
         sender: emailData.sender,
         recipients: emailData.recipients,
         body: emailData.body,
-        attachments: emailData.attachments.length > 0
-            ? emailData.attachments.map((att) => ({
+        attachments: readyAttachments.length > 0
+            ? readyAttachments.map((att) => ({
                 id: att.id,
                 name: att.name,
                 type: att.type,
@@ -234,6 +244,45 @@ async function handleFetchMail(
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         sendResponse({ success: false, error: message });
+    }
+}
+
+async function handleFetchAttachmentContent(
+    message: FetchAttachmentContentMessage,
+    sendResponse: (response: FetchAttachmentContentResult) => void
+): Promise<void> {
+    console.log(`[Background] Fetching attachment ${message.attachmentId} from tab ${message.tabId}`);
+
+    try {
+        if (!message.tabId) {
+            sendResponse({ success: false, error: 'No tab ID provided' });
+            return;
+        }
+
+        const messageTimeout = setTimeout(() => {
+            console.error('[Background] Timeout waiting for content script (attachment)');
+            sendResponse({ success: false, error: 'Timeout waiting for attachment data' });
+        }, MESSAGE_TIMEOUT);
+
+        chrome.tabs.sendMessage(
+            message.tabId,
+            message,
+            (response: FetchAttachmentContentResult) => {
+                clearTimeout(messageTimeout);
+
+                if (chrome.runtime.lastError) {
+                    console.error('[Background] Chrome error:', chrome.runtime.lastError?.message);
+                    const errorMsg = getChromeErrorMessage(chrome.runtime.lastError);
+                    sendResponse({ success: false, error: errorMsg });
+                    return;
+                }
+
+                sendResponse(response);
+            }
+        );
+    } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        sendResponse({ success: false, error: errorMessage });
     }
 }
 
@@ -371,6 +420,7 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
     const handlers: Record<string, (msg: any, res: any) => Promise<void>> = {
         FETCH_MAIL: handleFetchMail,
         PROCESS_MAIL: handleProcessMail,
+        FETCH_ATTACHMENT_CONTENT: handleFetchAttachmentContent,
         LOGIN: handleLogin,
         LOGOUT: handleLogout,
         CHECK_AUTH: handleCheckAuth,
