@@ -3,6 +3,7 @@ import type { EmailData, FetchResult, ProcessResult } from '../../shared/types';
 import { sendChromeMessage, getErrorMessage } from '../../shared/utils';
 import {
     cacheEmailData,
+    getCachedEmailData,
     getCurrentCachedEmail,
     clearAllEmailCaches
 } from '../../shared/storage';
@@ -27,7 +28,7 @@ export function useMail() {
 
                 setCurrentUrl(tab.url);
 
-                const cached = await getCurrentCachedEmail();
+                const cached = await getCurrentCachedEmail(tab.url);
                 if (cached) {
                     console.log('[useMail] Restored from cache');
                     setEmailData(cached);
@@ -86,13 +87,13 @@ export function useMail() {
                 console.log('[useMail] Fetching email from', domain);
 
                 const effectiveUrl = url || currentUrl;
-
-
                 const result = await fetchMailWithRetry(tabId, domain);
 
                 if (result.success && result.emailData) {
 
-                    const cached = await getCurrentCachedEmail();
+                    const cached = effectiveUrl
+                        ? await getCachedEmailData(effectiveUrl, result.emailData.id)
+                        : null;
 
                     if (cached && cached.id === result.emailData.id && cached.attachments.length > 0) {
                         console.log('[useMail] Same email, using cached attachments');

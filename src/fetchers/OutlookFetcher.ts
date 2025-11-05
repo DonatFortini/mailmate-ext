@@ -1,4 +1,5 @@
 import type { SupportedDomain } from "../shared/constants";
+import type { EmailData } from "../shared/types";
 import { MailFetcher } from "./MailFetcher";
 import { FileUtils, HtmlSanitizer } from "../shared/utils";
 
@@ -80,6 +81,8 @@ export const DEFAULT_OUTLOOK_SELECTORS: OutlookSelectors = {
 
 export abstract class OutlookFetcherBase extends MailFetcher {
     protected selectors: OutlookSelectors;
+    private readingPaneCache: Element | null | undefined;
+    private selectorStringCache = new Map<keyof OutlookSelectors, string>();
 
     protected constructor(domain: SupportedDomain, selectors: OutlookSelectors = DEFAULT_OUTLOOK_SELECTORS) {
         super(domain);
@@ -114,16 +117,30 @@ export abstract class OutlookFetcherBase extends MailFetcher {
         };
     }
 
+    protected invalidateCaches(): void {
+        this.readingPaneCache = undefined;
+        this.selectorStringCache.clear();
+    }
+
+    private getSelectorString(key: keyof OutlookSelectors): string {
+        if (this.selectorStringCache.has(key)) {
+            return this.selectorStringCache.get(key) as string;
+        }
+
+        const selectors = this.selectors[key];
+        const value = selectors.length > 0 ? selectors.join(',') : '';
+        this.selectorStringCache.set(key, value);
+        return value;
+    }
+
     protected findElement(selectors: string[]): Element | null {
         for (const selector of selectors) {
             try {
                 const element = document.querySelector(selector);
                 if (element) {
-                    console.log(`[OutlookFetcher] Found element with selector: ${selector}`);
                     return element;
                 }
             } catch (error) {
-                console.warn(`[OutlookFetcher] Invalid selector skipped: ${selector}`, error);
             }
         }
         return null;
@@ -135,25 +152,31 @@ export abstract class OutlookFetcherBase extends MailFetcher {
             try {
                 parent.querySelectorAll(selector).forEach(el => found.add(el));
             } catch (error) {
-                console.warn(`[OutlookFetcher] Invalid nested selector skipped: ${selector}`, error);
             }
         });
         return Array.from(found);
     }
 
     protected getReadingPane(): Element | null {
+        if (this.readingPaneCache && document.contains(this.readingPaneCache)) {
+            return this.readingPaneCache;
+        }
+
         const pane = this.findElement(this.selectors.readingPane);
         if (pane) {
+            this.readingPaneCache = pane;
             return pane;
         }
 
         const fallbackSelector = this.readingPaneFallbackSelector;
         if (!fallbackSelector) {
+            this.readingPaneCache = null;
             return null;
         }
 
-        console.warn('[OutlookFetcher] Reading pane not found, using fallback selector');
-        return document.querySelector(fallbackSelector);
+        const fallbackPane = document.querySelector(fallbackSelector);
+        this.readingPaneCache = fallbackPane;
+        return fallbackPane;
     }
 
     protected getEmailId(): string {
@@ -166,7 +189,6 @@ export abstract class OutlookFetcherBase extends MailFetcher {
                     return `${this.emailIdPrefix}_${value}`;
                 }
             } catch (error) {
-                console.warn('[OutlookFetcher] URL ID extractor error:', error);
             }
         }
 
@@ -184,13 +206,18 @@ export abstract class OutlookFetcherBase extends MailFetcher {
         return FileUtils.generateIdWithPrefix(this.emailIdPrefix);
     }
 
+    async fetchEmailData(): Promise<EmailData> {
+        this.invalidateCaches();
+        return super.fetchEmailData();
+    }
+
     protected getEmailSubject(): string {
         const pane = this.getReadingPane();
         if (!pane) return 'No Subject';
 
         const strategies: Array<() => string | null> = [
             () => {
-                const selector = this.selectors.subject.join(',');
+                const selector = this.getSelectorString('subject');
                 const subject = selector ? pane.querySelector(selector) : null;
                 return subject?.textContent?.trim() ?? null;
             },
@@ -221,7 +248,6 @@ export abstract class OutlookFetcherBase extends MailFetcher {
                 const result = strategy();
                 if (result) return result;
             } catch (error) {
-                console.warn('[OutlookFetcher] Subject extraction strategy failed:', error);
             }
         }
 
@@ -232,7 +258,7 @@ export abstract class OutlookFetcherBase extends MailFetcher {
         const pane = this.getReadingPane();
         if (!pane) return 'Unknown Sender';
 
-        const selector = this.selectors.sender.join(',');
+        const selector = this.getSelectorString('sender');
         const senderElement = selector ? pane.querySelector(selector) : null;
         if (senderElement) {
             const text = senderElement.textContent?.trim() ||
@@ -264,7 +290,7 @@ export abstract class OutlookFetcherBase extends MailFetcher {
             return [];
         }
 
-        const selector = this.selectors.recipients.join(',');
+        const selector = this.getSelectorString('recipients');
         const recipientElements = selector ? pane.querySelectorAll(selector) : [];
         recipientElements.forEach(element => {
             const text = element.textContent?.trim() ||
@@ -295,16 +321,12 @@ export abstract class OutlookFetcherBase extends MailFetcher {
                 if (bodyElement) {
                     const html = bodyElement.innerHTML.trim();
                     if (html) {
-                        console.log(`[OutlookFetcher] Found body with selector: ${selector}`);
                         return HtmlSanitizer.htmlToText(html);
                     }
                 }
             } catch (error) {
-                console.warn('[OutlookFetcher] Body selector failed:', selector, error);
             }
         }
-
-        console.warn('[OutlookFetcher] Using fallback body extraction');
         const text = pane.textContent?.trim() || '';
         return text.substring(0, 5000);
     }
@@ -312,104 +334,38 @@ export abstract class OutlookFetcherBase extends MailFetcher {
     protected getAttachmentElements(): HTMLElement[] {
         const pane = this.getReadingPane();
         if (!pane) {
-            console.log('[OutlookFetcher] No reading pane found for attachments');
             return [];
         }
 
-        console.log('[OutlookFetcher] DIAGNOSTIC: Searching for attachment indicators...');
-        const diagnosticSelectors = [
-            '[class*="attachment" i]',
-            '[class*="file" i]',
-            '[data-automation-id*="attachment" i]',
-            '[aria-label*="attachment" i]',
-            '[aria-label*="fichier" i]',
-            'button[download]',
-            'a[download]',
-            'img[alt*="attachment" i]',
-            '[role="attachment"]',
-        ];
+        const container = this.findElement(this.selectors.attachmentContainer);
+        const selectors = container
+            ? this.getContainerAttachmentSelectors()
+            : this.getPaneAttachmentSelectors();
 
-        diagnosticSelectors.forEach(selector => {
+        const root = container ?? pane;
+        return this.collectAttachments(root, selectors);
+    }
+
+    private collectAttachments(root: Element, selectors: string[]): HTMLElement[] {
+        const results = new Set<HTMLElement>();
+
+        selectors.forEach(selector => {
             try {
-                const found = pane.querySelectorAll(selector);
-                if (found.length > 0) {
-                    console.log(`[OutlookFetcher] DIAGNOSTIC: Found ${found.length} elements matching: ${selector}`);
-                    Array.from(found).slice(0, 2).forEach((el, idx) => {
-                        const element = el as HTMLElement;
-                        console.log(`[OutlookFetcher] DIAGNOSTIC: Element ${idx + 1}:`, {
-                            tagName: element.tagName,
-                            className: element.className,
-                            id: element.id,
-                            role: element.getAttribute('role'),
-                            ariaLabel: element.getAttribute('aria-label'),
-                            textContent: element.textContent?.substring(0, 50),
-                            dataAttributes: Array.from(element.attributes)
-                                .filter(attr => attr.name.startsWith('data-'))
-                                .map(attr => `${attr.name}="${attr.value}"`)
-                                .join(', '),
-                        });
-                    });
-                }
+                root.querySelectorAll(selector).forEach(node => {
+                    const element = node as HTMLElement;
+                    if (this.isAttachmentCandidate(element)) {
+                        results.add(element);
+                    }
+                });
             } catch (error) {
-                console.warn('[OutlookFetcher] Diagnostic selector failed:', selector, error);
             }
         });
 
-        const container = this.findElement(this.selectors.attachmentContainer);
+        return Array.from(results);
+    }
 
-        if (!container) {
-            console.log('[OutlookFetcher] No attachment container found with standard selectors');
-            console.log('[OutlookFetcher] Attempting fallback search IN reading pane...');
-
-            const broadSelectors = [
-                ...this.selectors.attachmentElements,
-                '[class*="attachment" i]',
-                '[class*="AttachmentCard" i]',
-                '[class*="FilePreview" i]',
-                '[class*="FileCard" i]',
-                '[class*="FileItem" i]',
-                'button[download]',
-                'a[download]',
-                '[role="button"][aria-label*="attachment" i]',
-                '[role="button"][aria-label*="file" i]',
-                '[role="button"][aria-label*="fichier" i]',
-                'div[data-automation-id*="FileAttachment"]',
-                'div[class*="FileContainer"]',
-                'span[class*="fileName"]',
-                'button[class*="fileButton"]',
-            ];
-
-            const elements = this.findElementsInParent(pane, broadSelectors);
-            console.log(`[OutlookFetcher] Found ${elements.length} potential attachment elements via fallback IN pane`);
-
-            const filtered = elements.filter((el: Element) => {
-                const text = el.textContent || '';
-                const hasExtension = /\.(pdf|doc|docx|xls|xlsx|png|jpg|jpeg|gif|zip|txt|ppt|pptx)/i.test(text);
-                const hasSize = /\d+\s*(Ko|Mo|KB|MB|Go|GB)/i.test(text);
-                const isNavigation = text.includes('Boîte de réception') ||
-                    text.includes('Brouillons') ||
-                    text.includes('Courrier indésirable') ||
-                    text.includes('Éléments envoyés') ||
-                    text.includes('Éléments supprimés') ||
-                    text.includes('Archive') ||
-                    text.includes('Historique');
-
-                return (hasExtension || hasSize) && !isNavigation;
-            });
-
-            console.log(`[OutlookFetcher] After filtering: ${filtered.length} attachments`);
-
-            if (filtered.length > 0) {
-                console.log('[OutlookFetcher] Sample attachment element classes:',
-                    filtered.slice(0, 3).map(el => (el as HTMLElement).className).join(' | ')
-                );
-            }
-
-            return filtered as HTMLElement[];
-        }
-
-        const attachments = new Set<HTMLElement>();
-        const enhancedSelectors = [
+    private getContainerAttachmentSelectors(): string[] {
+        return [
             ...this.selectors.attachmentElements,
             '[class*="file" i]',
             '[class*="attachment" i]',
@@ -422,52 +378,54 @@ export abstract class OutlookFetcherBase extends MailFetcher {
             '[role="button"][aria-label*="fichier"]',
             'button[data-automation-id*="file"]',
             'a[href*="attachment"]',
-            '[download]',
+            '[download]'
         ];
-
-        for (const selector of enhancedSelectors) {
-            try {
-                const elements = container.querySelectorAll(selector);
-                if (elements.length > 0) {
-                    console.log(`[OutlookFetcher] Found ${elements.length} elements in container with: ${selector}`);
-                }
-                elements.forEach(el => {
-                    const element = el as HTMLElement;
-                    const text = element.textContent || '';
-                    const hasExtension = /\.(pdf|doc|docx|xls|xlsx|png|jpg|jpeg|gif|zip|txt|ppt|pptx)/i.test(text);
-                    const hasSize = /\d+\s*(Ko|Mo|KB|MB|Go|GB)/i.test(text);
-                    const isNavigation = text.includes('Boîte de réception') ||
-                        text.includes('Brouillons') ||
-                        text.includes('Courrier indésirable') ||
-                        text.includes('Éléments') ||
-                        text.includes('Archive') ||
-                        text.includes('Historique');
-
-                    if ((hasExtension || hasSize) && !isNavigation) {
-                        attachments.add(element);
-                    }
-                });
-            } catch (error) {
-                console.warn('[OutlookFetcher] Attachment selector failed:', selector, error);
-            }
-        }
-
-        console.log(`[OutlookFetcher] Total unique attachment elements: ${attachments.size}`);
-
-        if (attachments.size === 0) {
-            console.warn('[OutlookFetcher] No attachments found in container, dumping container HTML structure:');
-            console.log(container.innerHTML.substring(0, 500));
-        }
-
-        return Array.from(attachments);
     }
 
+    private getPaneAttachmentSelectors(): string[] {
+        return [
+            ...this.selectors.attachmentElements,
+            '[class*="attachment" i]',
+            '[class*="AttachmentCard" i]',
+            '[class*="FilePreview" i]',
+            '[class*="FileCard" i]',
+            '[class*="FileItem" i]',
+            'button[download]',
+            'a[download]',
+            '[role="button"][aria-label*="attachment" i]',
+            '[role="button"][aria-label*="file" i]',
+            '[role="button"][aria-label*="fichier" i]',
+            'div[data-automation-id*="FileAttachment"]',
+            'div[class*="FileContainer"]',
+            'span[class*="fileName"]',
+            'button[class*="fileButton"]'
+        ];
+    }
+
+    private isAttachmentCandidate(element: HTMLElement): boolean {
+        if (!element) {
+            return false;
+        }
+
+        if (element.hasAttribute('download') || element.getAttribute('role') === 'attachment') {
+            return true;
+        }
+
+        const text = element.textContent || '';
+        if (!text) {
+            return Boolean(element.getAttribute('href') || element.getAttribute('data-attachment-url'));
+        }
+
+        const hasExtension = /\.(pdf|doc|docx|xls|xlsx|png|jpg|jpeg|gif|zip|txt|ppt|pptx)/i.test(text);
+        const hasSize = /\d+\s*(Ko|Mo|KB|MB|Go|GB)/i.test(text);
+        if (!hasExtension && !hasSize) {
+            return Boolean(element.querySelector('[download], [data-attachment-url], [data-url], [href]'));
+        }
+
+        const navigationTerms = ['Boîte de réception', 'Brouillons', 'Courrier indésirable', 'Éléments envoyés', 'Éléments supprimés', 'Archive', 'Historique'];
+        return !navigationTerms.some(term => text.includes(term));
+    }
     protected getSourceUrlAndName(element: HTMLElement): [string, string] {
-        console.log('[OutlookFetcher] Extracting URL and name from element:', {
-            tagName: element.tagName,
-            className: element.className.substring(0, 100),
-            ariaLabel: element.getAttribute('aria-label'),
-        });
 
         if (element.tagName === 'A' && element.className.includes('_ay_I')) {
             const anchor = element as HTMLAnchorElement;
@@ -475,8 +433,6 @@ export abstract class OutlookFetcherBase extends MailFetcher {
             const text = anchor.textContent?.trim() || '';
             let name = ariaLabel || text;
             name = name.split(/\s+\d+\s*(Ko|Mo|KB|MB|Go|GB)/i)[0].trim();
-
-            console.log('[OutlookFetcher] Method 1 (OWA anchor):', { url: anchor.href, name });
             return [anchor.href, name || 'attachment'];
         }
 
@@ -487,7 +443,6 @@ export abstract class OutlookFetcherBase extends MailFetcher {
                 anchor.getAttribute('title') ||
                 anchor.textContent?.trim() ||
                 'attachment';
-            console.log('[OutlookFetcher] Method 2 (anchor):', { url: anchor.href, name });
             return [anchor.href, name];
         }
 
@@ -503,7 +458,6 @@ export abstract class OutlookFetcherBase extends MailFetcher {
             element.getAttribute('title');
 
         if (dataUrl && dataName) {
-            console.log('[OutlookFetcher] Method 3 (data attrs):', { url: dataUrl, name: dataName });
             return [dataUrl, dataName];
         }
 
@@ -521,14 +475,12 @@ export abstract class OutlookFetcherBase extends MailFetcher {
                 downloadLink.getAttribute('aria-label') ||
                 downloadLink.textContent?.trim() ||
                 'attachment';
-            console.log('[OutlookFetcher] Method 4 (nested link):', { url, name });
             return [url, name];
         }
 
         const onclick = element.getAttribute('onclick') || '';
         const urlMatch = onclick.match(/https?:\/\/[^\s'\"]+/);
         if (urlMatch && fileName) {
-            console.log('[OutlookFetcher] Method 5 (onclick):', { url: urlMatch[0], name: fileName });
             return [urlMatch[0], fileName];
         }
 
@@ -538,12 +490,10 @@ export abstract class OutlookFetcherBase extends MailFetcher {
                 nestedImage.title ||
                 fileName ||
                 'image';
-            console.log('[OutlookFetcher] Method 6 (image):', { url: nestedImage.src, name });
             return [nestedImage.src, name];
         }
 
         if (element instanceof HTMLImageElement) {
-            console.log('[OutlookFetcher] Method 7 (direct image):', { url: element.src, name: element.alt || 'image' });
             return [element.src, element.alt || element.title || 'image'];
         }
 
@@ -556,7 +506,6 @@ export abstract class OutlookFetcherBase extends MailFetcher {
                 element.getAttribute('aria-label') ||
                 element.textContent?.trim() ||
                 'attachment';
-            console.log('[OutlookFetcher] Method 8 (any link):', { url, name });
             return [url, name];
         }
 
@@ -564,7 +513,6 @@ export abstract class OutlookFetcherBase extends MailFetcher {
             element.getAttribute('aria-label') ||
             element.textContent?.trim() ||
             'attachment';
-        console.warn('[OutlookFetcher] No URL found, using fallback name:', fallbackName);
         return ['', fallbackName];
     }
 }

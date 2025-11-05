@@ -27,6 +27,50 @@ export class GmailFetcher extends MailFetcher {
     }
 
     protected getEmailId(): string {
+        const href = window.location.href;
+
+        try {
+            const url = new URL(href);
+            const params = url.searchParams;
+            const paramId = params.get('permmsgid') || params.get('msgid') || params.get('th');
+            if (paramId) {
+                return `gmail_${paramId}`;
+            }
+        } catch {
+            // Ignore URL parsing errors
+        }
+
+        const hash = window.location.hash || '';
+        if (hash) {
+            const segments = hash.split('/').filter(Boolean);
+            const lastSegment = segments[segments.length - 1];
+            if (lastSegment && /^[A-Za-z0-9]+$/.test(lastSegment)) {
+                return `gmail_${lastSegment}`;
+            }
+        }
+
+        const activeEmail = this.getActiveEmail();
+        if (activeEmail) {
+            const attributes = [
+                'data-legacy-message-id',
+                'data-message-id',
+                'data-legacy-thread-id',
+                'data-thread-id',
+            ];
+
+            for (const attr of attributes) {
+                const value = activeEmail.getAttribute(attr);
+                if (value) {
+                    return `gmail_${value}`;
+                }
+            }
+
+            const hiddenInput = activeEmail.querySelector('input[name="th"]') as HTMLInputElement | null;
+            if (hiddenInput?.value) {
+                return `gmail_${hiddenInput.value}`;
+            }
+        }
+
         return FileUtils.generateIdWithPrefix('gmail');
     }
 
@@ -79,7 +123,6 @@ export class GmailFetcher extends MailFetcher {
 
         const attachmentDiv = activeEmail?.querySelector(this.selectors.attachmentDiv);
         if (!attachmentDiv) {
-            console.log('[GmailFetcher] No attachment container found');
             return [];
         }
 
@@ -91,7 +134,6 @@ export class GmailFetcher extends MailFetcher {
         ) as HTMLElement[];
         const elements = Array.from(new Set([...baseElements, ...downloadNodes]));
 
-        console.log(`[GmailFetcher] Found ${elements.length} attachment elements`);
         return elements;
     }
 

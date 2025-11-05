@@ -21,7 +21,6 @@ export class FetcherFactory {
         const fetcher = this.createFetcher(normalizedDomain);
         this.fetcherInstances.set(normalizedDomain, fetcher);
 
-        console.log(`[FetcherFactory] Created ${normalizedDomain} fetcher`);
         return fetcher;
     }
 
@@ -82,9 +81,20 @@ export class FetcherFactory {
             return false;
         }
 
-        return hostname.startsWith('outlook.') ||
-            hostname.includes('office365') ||
-            hostname.includes('office.com');
+        if (!hostname) {
+            return false;
+        }
+
+        if (hostname === 'outlook.com' || hostname.endsWith('.outlook.com')) {
+            return true;
+        }
+
+        const [firstLabel] = hostname.split('.');
+        if (firstLabel === 'outlook') {
+            return true;
+        }
+
+        return hostname.includes('office365') || hostname.includes('office.com');
     }
 
     static isSupported(domain: string): boolean {
@@ -97,14 +107,12 @@ export class FetcherFactory {
 
     static clearCache(): void {
         this.fetcherInstances.clear();
-        console.log('[FetcherFactory] Cache cleared');
     }
 
     static clearFetcher(domain: string): void {
         const normalizedDomain = this.normalizeDomain(domain);
         if (normalizedDomain && this.fetcherInstances.has(normalizedDomain)) {
             this.fetcherInstances.delete(normalizedDomain);
-            console.log(`[FetcherFactory] Cleared ${normalizedDomain} fetcher`);
         }
     }
 }

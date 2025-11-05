@@ -117,9 +117,20 @@ function isOutlookOwaDomain(hostname: string): boolean {
         return false;
     }
 
-    return hostname.startsWith('outlook.') ||
-        hostname.includes('office365') ||
-        hostname.includes('office.com');
+    if (!hostname) {
+        return false;
+    }
+
+    if (hostname === 'outlook.com' || hostname.endsWith('.outlook.com')) {
+        return true;
+    }
+
+    const [firstLabel] = hostname.split('.');
+    if (firstLabel === 'outlook') {
+        return true;
+    }
+
+    return hostname.includes('office365') || hostname.includes('office.com');
 }
 
 export function extractDomain(url: string): string {
